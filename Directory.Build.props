@@ -1,0 +1,65 @@
+<Project>
+  <!-- Shared settings for every project in this repo. -->
+  <PropertyGroup>
+    <!-- Override with: dotnet build -p:GameDir="D:\SteamLibrary\steamapps\common\Moon Sweepers" -->
+    <GameDir Condition="'$(GameDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Moon Sweepers</GameDir>
+    <BepInExDir>$(GameDir)\BepInEx</BepInExDir>
+
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DebugType>embedded</DebugType>
+
+    <!-- After each build, copy the output into the game (see the DeployToGame target).
+         tools\build-installer.ps1 points GameDeployRoot at a staging folder instead. -->
+    <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <GameDeployRoot Condition="'$(GameDeployRoot)' == ''">$(GameDir)</GameDeployRoot>
+
+    <!-- What a project is, set in its .csproj. It controls where it deploys:
+           Mod            <game>\Mods\<ModFolderName>\   (default; loaded by the mod loader when enabled in-game)
+           LoaderPlugin   <game>\BepInEx\plugins\<AssemblyName>\
+           LoaderPatcher  <game>\BepInEx\patchers\<AssemblyName>\
+           DevPlugin      <game>\BepInEx\plugins\<AssemblyName>\   (development only; never shipped) -->
+    <ModKind Condition="'$(ModKind)' == ''">Mod</ModKind>
+  </PropertyGroup>
+
+  <!-- BepInEx + Il2CppInterop runtime, and the interop assemblies generated from the game.
+       These come from the local game install and are never committed or shipped with mods. -->
+  <ItemGroup Condition="'$(IsModProject)' == 'true'">
+    <Reference Include="$(BepInExDir)\core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\BepInEx.Unity.Common.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\0Harmony.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\interop\*.dll" Exclude="$(BepInExDir)\interop\netstandard.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="CheckGameSetup" BeforeTargets="ResolveAssemblyReferences" Condition="'$(IsModProject)' == 'true'">
+    <Error Condition="!Exists('$(BepInExDir)\interop\Assembly-CSharp.dll')"
+           Text="Interop assemblies not found in '$(BepInExDir)\interop'. Run tools\setup-modding.ps1 first (see README.md)." />
+  </Target>
+
+  <!-- Properties here are evaluated when the target runs, so they see ModKind/ModFolderName set in the .csproj. -->
+  <Target Name="DeployToGame" AfterTargets="Build" Condition="'$(IsModProject)' == 'true' And '$(DeployToGame)' == 'true'">
+    <PropertyGroup>
+      <ModFolderName Condition="'$(ModFolderName)' == ''">$(MSBuildProjectName)</ModFolderName>
+      <_DeployDir Condition="'$(ModKind)' == 'Mod'">$(GameDeployRoot)\Mods\$(ModFolderName)</_DeployDir>
+      <_DeployDir Condition="'$(ModKind)' == 'LoaderPlugin' Or '$(ModKind)' == 'DevPlugin'">$(GameDeployRoot)\BepInEx\plugins\$(AssemblyName)</_DeployDir>
+      <_DeployDir Condition="'$(ModKind)' == 'LoaderPatcher'">$(GameDeployRoot)\BepInEx\patchers\$(AssemblyName)</_DeployDir>
+    </PropertyGroup>
+    <Error Condition="'$(_DeployDir)' == ''" Text="Unknown ModKind '$(ModKind)'." />
+    <ItemGroup>
+      <!-- Everything in a project's package\ folder (mod.json, preview.png, assets) ships next to the DLL. -->
+      <_ModPackageFile Include="$(MSBuildProjectDirectory)\package\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_DeployDir)" />
+    <Copy SourceFiles="@(_ModPackageFile)" DestinationFiles="@(_ModPackageFile->'$(_DeployDir)\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Message Importance="high" Text="Deployed $(AssemblyName) ($(ModKind)) -> $(_DeployDir)" />
+  </Target>
+</Project>

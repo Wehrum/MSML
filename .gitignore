@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Build/setup scratch output
+/artifacts/
+/.tools/
+
+# Never commit game files or assemblies generated from the game
+interop/
+dummy/
+*.dll
+!tools/il2cppinterop/**/*.cs

@@ -1,0 +1,7 @@
+﻿{
+  "id": "moonsweepmods.helloworld",
+  "name": "Hello World",
+  "version": "0.1.0",
+  "author": "Moon Sweepers Mods",
+  "description": "A tiny example mod. It shows a \"Hello World mod loaded\" label in the top-left corner for 30 seconds after the game starts, and logs a message whenever the main menu opens.\n\nUse it as a starting point for your own mods: copy examples/HelloWorld in the repo and rename it."
+}

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The mod loader's in-game side: adds MODS to the main menu and the Mods screen. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <ModKind>LoaderPlugin</ModKind>
+    <AssemblyName>MoonSweepMods.ModLoader</AssemblyName>
+    <RootNamespace>MoonSweepMods.ModLoader</RootNamespace>
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\ModLoader.Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Reference Include="$(BepInExDir)\core\Mono.Cecil.dll" Private="false" />
+  </ItemGroup>
+</Project>

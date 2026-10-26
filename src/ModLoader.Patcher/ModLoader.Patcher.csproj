@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Preloader patcher: activates the mods enabled in the in-game Mods screen before BepInEx loads plugins. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <ModKind>LoaderPatcher</ModKind>
+    <AssemblyName>MoonSweepMods.ModLoader.Patcher</AssemblyName>
+    <RootNamespace>MoonSweepMods.ModLoader</RootNamespace>
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\ModLoader.Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
+    <Reference Include="$(BepInExDir)\core\BepInEx.Preloader.Core.dll" Private="false" />
+    <Reference Include="$(BepInExDir)\core\Mono.Cecil.dll" Private="false" />
+  </ItemGroup>
+</Project>

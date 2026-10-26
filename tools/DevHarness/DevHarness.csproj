@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Development-only plugin: lets scripts drive the running game (screenshots, UI dumps, method calls).
+       Never shipped in the installer. Use it via tools\dev.ps1. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <ModKind>DevPlugin</ModKind>
+    <AssemblyName>MoonSweepMods.DevHarness</AssemblyName>
+    <RootNamespace>MoonSweepMods.DevHarness</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>
