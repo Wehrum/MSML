@@ -59,7 +59,7 @@ try {
     # 2. Commit compatibility record, tag, push ----------------------------------------------------
     Step "Recording compatibility and tagging $tag"
     Native git @("add", "compatibility.json")
-    if (git diff --cached --name-only) { Native git @("commit", "-q", "-m", "Release $tag: record tested game build") }
+    if (git diff --cached --name-only) { Native git @("commit", "-q", "-m", "Release ${tag}: record tested game build") }
     Native git @("tag", "-a", $tag, "-m", "MSML $tag")
 
     & $gh repo view $Repo --json name *> $null
