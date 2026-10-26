@@ -5,7 +5,7 @@ using MoonCleaners;
 using MoonSweepMods.ModelKit;
 using UnityEngine;
 
-namespace MoonSweepMods.HexHarvester;
+namespace MSML.HexHarvester;
 
 /// <summary>
 /// Puts the Hex Harvester design on a freshly built Mega Vacuum Rover model. The rover supplies the game-side pieces
@@ -77,7 +77,8 @@ internal static class HarvesterModel
         for (var i = 0; i < rollers.Count; i++) rest[i] = rollers[i].localRotation;
         view.rollerRest = rest;
 
-        view.cleaningWidth = design.Values["cleaningWidth"];
+        // The game scales the cleaned strip by the model's scale, like the offset below.
+        view.cleaningWidth = design.Values["cleaningWidth"] / scale;
         view.cleaningOffset = design.Values["headZ"] / scale;
         view.wheelRadius = design.Values["wheelRadius"];
 

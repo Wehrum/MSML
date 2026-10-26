@@ -145,7 +145,8 @@ internal static class ScriptHost
         _deadline = Time.unscaledTime + ctx.Timeout;
         ctx.BeginCapture();
         Step();
-        return "";
+        // Finished without waiting: return its output now rather than with the next command.
+        return _running == null ? TakeFinished() ?? "" : "";
     }
 
     private static void Step()
@@ -239,7 +240,7 @@ global using Random = UnityEngine.Random;
                     var line = span.Path == "GlobalUsings.cs" ? "" : $"{Path.GetFileName(span.Path)}({span.StartLinePosition.Line + 1},{span.StartLinePosition.Character + 1}): ";
                     return line + d.Id + " " + d.GetMessage();
                 });
-            throw new InvalidOperationException("Compile failed:\n" + string.Join("\n", errors));
+            throw new ScriptCompileException("Compile failed:\n" + string.Join("\n", errors));
         }
         // Load from a file like any mod: Harmony's IL2CPP patching crashed the runtime with a script loaded from bytes.
         // Each compile gets a unique name, so versions never clash.
@@ -289,6 +290,12 @@ global using Random = UnityEngine.Random;
         }
         catch { return false; }
     }
+}
+
+/// <summary>A script didn't compile; the message lists the errors (no stack trace needed).</summary>
+public sealed class ScriptCompileException : Exception
+{
+    public ScriptCompileException(string message) : base(message) { }
 }
 
 /// <summary>What a script gets: output, a Harmony instance, per-frame hooks and cleanups, all undone on reload.</summary>

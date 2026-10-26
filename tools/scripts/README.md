@@ -42,9 +42,25 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 - **Lifetime:** `ctx.Harmony` patches, `ctx.OnUpdate(...)` hooks and `ctx.OnUnload(...)` cleanups are undone when the
   same script runs again (or `dev.ps1 "unload name"`), so scripts can be edited and rerun freely.
 - **Helpers** ([Dev.cs](../DevHarness/Dev.cs)): `Player`, `World`, `Equipment`, `Position`, `Money`,
-  `Find<T>()`, `FindAll<T>()`, `Get("find:Type.member")`, `Dump(obj)`, `Describe(obj)`, `Teleport`, `Ahead(m)`,
-  `Ground(p)`, `VehicleIndex(name)`, `Spawn(name)`, `Board(v)`, `Leave()`, `Driving`, `Drive(t, s, secs)`,
-  `Click("find:...")`, `Shot(name)`, `WaitFor(cond)`.
+  `Find<T>()`, `FindAll<T>()`, `Items<T>(il2cppCollection)` (so LINQ works on game lists and dictionaries),
+  `Get("find:Type.member")`, `Dump(obj)`, `Describe(obj)`, `Teleport`, `Ahead(m)`, `Ground(p)`, `VehicleIndex(name)`,
+  `Spawn(name)`, `Board(v)`, `Leave()`, `Driving`, `Drive(t, s, secs)`, `Click("find:...")`, `Shot(name)`,
+  `WaitFor(cond)`.
+- **Code from PowerShell:** quotes inside `-Code` get mangled by nested `powershell -File` calls; pipe the code in
+  instead: `'Money = 1e6; return Money;' | powershell -File tools\cs.ps1 -Stdin`.
+
+## Scripts here
+
+| Script | What it does |
+|---|---|
+| `selftest.cs` | Checks the script host end to end (hooks, patches, log capture, spawn/board/drive). |
+| `patchtest.cs` | Installs a runtime Harmony patch (`install`), for checking patching on its own. |
+| `garage-probe.cs` | Lists garage offers, prices, the catalog and owned vehicles. |
+| `vehicle-shop-test.cs` | Modded vehicle in the garage: `buy` (money, buy, save, screenshot), `check`, `drive`. |
+| `garage-screens.cs` | Screenshots the garage's Vehicles, Upgrades and Fleet pages for a vehicle. |
+| `garage-recall.cs` | Stores a bought vehicle and calls it back out: where it lands, and that it drives. |
+| `drive-outside.cs` | Spawns a vehicle next to the parked push sweeper and drives it, logging speed. |
+| `render-icon.cs` | Renders a vehicle's in-game model to a transparent 512x512 garage picture. |
 
 ## Known limits
 

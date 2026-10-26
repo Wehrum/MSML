@@ -154,6 +154,7 @@ public class Harness : MonoBehaviour
                 var result = Run(line);
                 if (!(ScriptHost.Busy && result.Length == 0)) _batch.AppendLine(result);
             }
+            catch (ScriptCompileException e) { _batch.AppendLine("ERROR: " + e.Message); }
             catch (Exception e) { _batch.AppendLine("ERROR: " + (e.InnerException ?? e)); }
             if (ScriptHost.Busy) return;
         }

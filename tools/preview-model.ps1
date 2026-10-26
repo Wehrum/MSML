@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Renders ModelKit designs (examples\*\Design\*.cs) to PNG without the game.
+    Renders ModelKit designs (official\*\Design\*.cs, examples\*\Design\*.cs) to PNG without the game.
 
 .EXAMPLE
     .\tools\preview-model.ps1 HexHarvester            # artifacts\previews\HexHarvester.png

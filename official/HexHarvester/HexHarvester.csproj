@@ -1,9 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Hex Harvester: a new vehicle sold in the garage, built on the MSML vehicle API. -->
   <PropertyGroup>
     <IsModProject>true</IsModProject>
-    <AssemblyName>MoonSweepMods.HexHarvester</AssemblyName>
-    <RootNamespace>MoonSweepMods.HexHarvester</RootNamespace>
-    <Version>0.1.0</Version>
+    <UseMsmlApi>true</UseMsmlApi>
+    <AssemblyName>MSML.HexHarvester</AssemblyName>
+    <RootNamespace>MSML.HexHarvester</RootNamespace>
+    <Version>0.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <!-- Engine-independent model code, shared with tools\ModelPreview so previews match the game exactly. -->

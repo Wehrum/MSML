@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using MoonSweepMods.ModelKit;
 
-namespace MoonSweepMods.HexHarvester;
+namespace MSML.HexHarvester;
 
 /// <summary>
 /// The Hex Harvester: a six-wheeled lunar harvester with a hex-glass cab, a hex silo tower, and a 25 m truss-mounted

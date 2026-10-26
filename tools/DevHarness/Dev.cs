@@ -208,4 +208,18 @@ public static class Dev
     }
 
     public static float Now => Time.unscaledTime;
+
+    /// <summary>
+    /// The items of an Il2Cpp collection (List, Dictionary, KeyCollection, HashSet...) as a normal list, so LINQ works:
+    /// <c>Items&lt;string&gt;(World.vehicleStorage.Keys)</c>.
+    /// </summary>
+    public static List<T> Items<T>(object collection)
+    {
+        var list = new List<T>();
+        var enumerator = collection.GetType().GetMethod("GetEnumerator", Type.EmptyTypes)!.Invoke(collection, null)!;
+        var moveNext = enumerator.GetType().GetMethod("MoveNext")!;
+        var current = enumerator.GetType().GetProperty("Current")!;
+        while ((bool)moveNext.Invoke(enumerator, null)!) list.Add((T)current.GetValue(enumerator)!);
+        return list;
+    }
 }

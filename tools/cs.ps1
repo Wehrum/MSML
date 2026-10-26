@@ -34,6 +34,8 @@ param(
     [Parameter(Position = 0)][string]$Path,
     [Parameter(Position = 1, ValueFromRemainingArguments = $true)][string[]]$ScriptArgs,
     [string]$Code,
+    # Read the code from standard input: 'code' | powershell -File tools\cs.ps1 -Stdin
+    [switch]$Stdin,
     [int]$TimeoutSec = 180,
     # If the game isn't running, start it and load this save slot first (0: don't start it).
     [int]$Slot = 1,
@@ -46,6 +48,7 @@ if (-not (Get-Process MoonSweepers -ErrorAction SilentlyContinue)) {
     Write-Host "Starting Moon Sweepers into save slot $Slot..." -ForegroundColor Cyan
     & (Join-Path $PSScriptRoot "dev-relaunch.ps1") -NoBuild -LoadSlot $Slot -GameDir $GameDir | Out-Null
 }
+if ($Stdin) { $Code = [Console]::In.ReadToEnd() }   # code from stdin avoids command-line quoting problems
 if ($Code) {
     $command = "eval64 " + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Code))
 } elseif ($Path) {
