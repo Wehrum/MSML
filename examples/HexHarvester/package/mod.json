@@ -1,0 +1,7 @@
+﻿{
+  "id": "moonsweepmods.hexharvester",
+  "name": "Hex Harvester",
+  "version": "0.1.0",
+  "author": "Moon Sweepers Mods",
+  "description": "A new vehicle: the Hex Harvester. A six-wheeled harvester with a hex-glass cab, a hex silo tower holding 9,000 kg, and a 25 m truss-mounted sweeper head with five brush pods. It clears a whole hex in one pass.\n\nIt runs on the game's own vehicle code, so driving, cleaning, the hopper, unloading, lights and sounds all work like the other vehicles. It uses the Mega Vacuum Rover's sounds.\n\nNot sold in the garage yet: spawn it with the Debug Menu mod (Esc > DEBUG > Spawn vehicle > Hex harvester)."
+}

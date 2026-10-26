@@ -14,7 +14,8 @@ in-game with **ADD MOD**. This repo holds the loader, the installer pipeline, an
 | Startup patcher | [`src/ModLoader.Patcher`](src/ModLoader.Patcher) → `BepInEx\patchers` | Runs before any plugin loads. It mirrors the mods enabled in-game from `<game>\Mods` into `BepInEx\plugins\MoonSweepMods.ModLoader.Active`, so BepInEx loads exactly those |
 | Mods screen | [`src/ModLoader`](src/ModLoader) → `BepInEx\plugins` | Adds MODS to the main menu and the Mods screen, built from the game's own UI kit (`MoonSimpleKit`) |
 | Shared code | [`src/ModLoader.Shared`](src/ModLoader.Shared) | Mod discovery (`mod.json`, `[BepInPlugin]`), enable state, paths. Compiled into both projects |
-| Example mods | [`examples/`](examples/) | Mods built on the loader. Each is packaged as its own zip |
+| Example mods | [`examples/`](examples/) | Mods built on the loader. Each is packaged as its own zip (see [Example mods](#example-mods)) |
+| ModelKit | [`shared/ModelKit`](shared/ModelKit) | Engine-independent procedural 3D models, shared by mods and the offline previewer (see [Making models](#making-models)) |
 
 The Mods screen:
 
@@ -109,6 +110,31 @@ Mods\YourMod\
 
 Without `mod.json`, the name and version come from the `[BepInPlugin]` attribute.
 
+### Example mods
+
+| Mod | What it shows |
+|---|---|
+| [`HelloWorld`](examples/HelloWorld) | The minimal mod: a plugin, a custom `MonoBehaviour`, and a Harmony hook |
+| [`DebugMenu`](examples/DebugMenu) | A uGUI panel in the pause menu: unlimited money, +$10k/+$1M, unlimited suit energy, fly mode, empty/fill the hopper, and spawn any catalog vehicle (including mod-added ones). It only reports a spawn as successful once the vehicle is visible and on the ground |
+| [`HexHarvester`](examples/HexHarvester) | A brand-new vehicle. It's added as a new entry in the game's vehicle catalog and runs on the game's own vehicle code (driving, cleaning, hopper, unloading, lights, audio). It has an original ModelKit model and a 25 m (one hex) cleaning head. It isn't sold in the garage yet, so spawn it from the Debug Menu |
+
+How the Hex Harvester plugs into the game, as a pattern for future vehicles:
+
+- **Catalog entry:** a new `MoonPrototypeCatalog.Item` is appended to `MoonPrototypeCatalog.Vehicles`, so it gets its own index.
+- **Base vehicle:** per-index lookups (`AuthoredPrefab`, `StorageKg`, `Heft`, `MoonVehicleAudio.Voice`) are patched to reuse a stock vehicle for physics anchors and sounds.
+- **Model:** `MoonPrototypeModels.Vehicle` is patched so the stock model's renderers are hidden and the ModelKit model is attached in their place. Wheels go on the game's animated wheel transforms, and brushes become `view.rollers`.
+
+### Making models
+
+Models are code, built with [`shared/ModelKit`](shared/ModelKit) (boxes, tapered blocks, prisms and hex columns, cylinders, rods, spheres, radial patterns), for example [`HexHarvesterDesign.cs`](examples/HexHarvester/Design/HexHarvesterDesign.cs). The same design renders in the game, through `UnityModelBuilder`, and offline without the game:
+
+```powershell
+.\tools\preview-model.ps1 HexHarvester                                   # artifacts\previews\HexHarvester.png, 6 views, about 1 s
+.\tools\preview-model.ps1 HexHarvester -View "front 3/4" -Size 1280x720  # one clean view, for example a mod's preview.png
+```
+
+The previewer culls back faces like Unity does, draws a 1 m/5 m ground grid with the cleaning width marked in orange, and adds shadows and part outlines. Put designs in `examples/<Mod>/Design/*.cs`, implementing `IModelDesign`, and the previewer picks them up automatically.
+
 ### Browsing the game's code
 
 Open `<game>\BepInEx\interop\Assembly-CSharp.dll` in [ILSpy](https://github.com/icsharpcode/ILSpy) or
@@ -123,13 +149,16 @@ Harmony and log, or poke at it live with the dev harness.
 
 ```powershell
 .\tools\dev-relaunch.ps1                     # close the game, build + deploy everything, relaunch, wait for the menu
+.\tools\dev-relaunch.ps1 -LoadSlot 1         # ...and load save slot 1
 .\tools\dev.ps1 "dump menu.home 2"           # UI hierarchy with positions, colors, text
 .\tools\dev.ps1 "click menu.home.MODS" "shot C:\temp\mods.png"
 .\tools\dev.ps1 "get menu.kit.Orange" "call menu.Back"
+.\tools\dev.ps1 "get find:MoonPrototypeVehicle.CleaningWidth"   # find:<Type>[#n] finds live game objects
 ```
 
-Expressions start at `menu` (the `MoonMainMenu`), `/Path/To/GameObject`, or `static:Full.Type.Name:Member`. See the
-comment at the top of [`Harness.cs`](tools/DevHarness/Harness.cs).
+Expressions start at `menu` (the `MoonMainMenu`), `find:Type`, `/Path/To/GameObject`, or `static:Full.Type.Name:Member`. `set` assigns values. See the comment at the top of [`Harness.cs`](tools/DevHarness/Harness.cs).
+
+Logging: the installer sets BepInEx to log every level, including Unity's own log, to `<game>\BepInEx\LogOutput.log`.
 
 ## Releasing
 
@@ -177,9 +206,11 @@ For multiplayer, everyone in a session should have the same mods enabled.
   `ClassInjector` can't yet register injected types that implement Il2Cpp interfaces. Plain `MonoBehaviour`s,
   delegates, and Harmony patches work. For UI hover and click, use the game's `MoonWorkshopHover` component or
   `Button.onClick`, as the Mods screen does.
-- **Stripped Unity APIs:** some Unity methods are stripped from the game, for example
-  `ColorUtility.ToHtmlStringRGBA` and `ScreenCapture.CaptureScreenshot(string)`. They throw
-  `Method unstripping failed` or `MissingMethodException`.
+- **Stripped Unity APIs:** some Unity methods are stripped from the game. Examples are `ColorUtility.ToHtmlStringRGBA`,
+  `ScreenCapture.CaptureScreenshot(string)`, and all of IMGUI's controls (`GUI.Button`, `GUI.Box`, ...). They throw
+  `Method unstripping failed` or `MissingMethodException`. Use uGUI (`Canvas`, `Button`, TextMeshPro) for UI.
+- **Spawned vehicle models:** `MoonPrototypeModels.Vehicle()` returns the model inactive. Activate it before
+  `MoonPrototypeVehicle.Initialize`, or the vehicle has physics but no visible body or wheel contacts.
 - **Log warnings:** `Class::Init signatures have been exhausted, using a substitute!` and "Interop assemblies are
   possibly out of date" appear in the log. Both are harmless.
 - **Pinned versions:** BepInEx build 791, Cpp2IL `b5ad444` and Il2CppInterop `81a6f78`. Newer upstream releases may

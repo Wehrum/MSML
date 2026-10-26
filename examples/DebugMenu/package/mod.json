@@ -1,0 +1,7 @@
+{
+  "id": "moonsweepmods.debugmenu",
+  "name": "Debug Menu",
+  "version": "0.1.0",
+  "author": "Moon Sweepers Mods",
+  "description": "Testing tools. In-game, open the pause menu (Esc) and a DEBUG panel appears on the right (F7 hides or shows it).\n\nUnlimited money, +$10,000, unlimited suit energy, fly mode, empty or fill your vehicle's hopper, and spawn any vehicle in front of you, including vehicles added by other mods.\n\nMeant for testing: it changes your save (money, vehicles)."
+}

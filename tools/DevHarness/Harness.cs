@@ -38,6 +38,21 @@ public class Plugin : BasePlugin
         Logger = Log;
         AddComponent<Harness>();
         new Harmony("moonsweepmods.devharness").PatchAll(typeof(MenuHook));
+        new Harmony("moonsweepmods.devharness.devtools").PatchAll(typeof(DevToolsPatch));
+    }
+}
+
+[HarmonyPatch(typeof(MoonDevTools), nameof(MoonDevTools.Enabled), MethodType.Getter)]
+internal static class DevToolsPatch
+{
+    internal static bool On;
+
+    [HarmonyPrefix]
+    private static bool Prefix(ref bool __result)
+    {
+        if (!On) return true;
+        __result = true;
+        return false;
     }
 }
 
@@ -128,6 +143,24 @@ public class Harness : MonoBehaviour
             }
             case "call":
                 return Describe(Call(rest));
+            case "set":
+            {
+                // set <expr>.Member <value>
+                var sp = rest.LastIndexOf(' ');
+                var target = rest[..sp];
+                var value = rest[(sp + 1)..].Trim('"');
+                var cut = Math.Max(target.LastIndexOf('.'), target.LastIndexOf(':'));
+                var member = target[(cut + 1)..];
+                var ownerExpr = target[..cut];
+                object? owner = null;
+                Type type;
+                if (ownerExpr.StartsWith("static:") && ownerExpr.Count(c => c == ':') == 1) type = FindType(ownerExpr["static:".Length..]);
+                else { owner = Resolve(ownerExpr); type = owner!.GetType(); }
+                var prop = type.GetProperty(member, All);
+                if (prop != null) prop.SetValue(owner, Convert(value, prop.PropertyType));
+                else { var f = type.GetField(member, All) ?? throw new InvalidOperationException("No member " + member); f.SetValue(owner, Convert(value, f.FieldType)); }
+                return "ok";
+            }
             case "click":
             {
                 var button = TransformOf(Resolve(rest)).GetComponentInChildren<Button>(true);
@@ -135,6 +168,9 @@ public class Harness : MonoBehaviour
                 button.onClick.Invoke();
                 return "clicked " + button.name;
             }
+            case "devtools":
+                DevToolsPatch.On = rest != "off";
+                return "MoonDevTools.Enabled forced " + (DevToolsPatch.On ? "on" : "off") + "; reads now " + MoonCleaners.MoonDevTools.Enabled;
             case "quit":
                 Application.Quit();
                 return "quitting";
@@ -153,7 +189,8 @@ public class Harness : MonoBehaviour
             "menu" => MenuHook.Menu ?? throw new InvalidOperationException("Main menu not seen yet."),
             _ when root.StartsWith("/") => GameObject.Find(root) ?? throw new InvalidOperationException("GameObject not found: " + root),
             _ when root.StartsWith("static:") => null,
-            _ => throw new InvalidOperationException("Expressions start with menu, /Path or static:Type"),
+            _ when root.StartsWith("find:") => FindLive(root["find:".Length..]),
+            _ => throw new InvalidOperationException("Expressions start with menu, /Path, find:Type or static:Type"),
         };
         Type? staticType = root.StartsWith("static:") ? FindType(root["static:".Length..]) : null;
         foreach (var step in steps)
@@ -210,6 +247,19 @@ public class Harness : MonoBehaviour
     private static Type FindType(string name) =>
         AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null)
         ?? throw new InvalidOperationException("Type not found: " + name);
+
+    /// <summary>find:TypeName or find:TypeName#2 - a live object of a game type (short names search MoonCleaners).</summary>
+    private static object FindLive(string spec)
+    {
+        var hash = spec.IndexOf('#');
+        var index = hash < 0 ? 0 : int.Parse(spec[(hash + 1)..]);
+        var name = hash < 0 ? spec : spec[..hash];
+        var type = name.Contains('.') ? FindType(name) : FindType("MoonCleaners." + name);
+        var found = UnityEngine.Object.FindObjectsByType(Il2CppType.From(type), FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (index >= found.Length) throw new InvalidOperationException($"{found.Length} live {name} objects");
+        var obj = found[index];
+        return Activator.CreateInstance(type, obj.Pointer)!;
+    }
 
     private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.FlattenHierarchy;
 
@@ -282,6 +332,21 @@ public class Harness : MonoBehaviour
         if (type == typeof(int)) return int.Parse(value, CultureInfo.InvariantCulture);
         if (type == typeof(float)) return float.Parse(value, CultureInfo.InvariantCulture);
         if (type == typeof(double)) return double.Parse(value, CultureInfo.InvariantCulture);
+        if (type == typeof(decimal)) return decimal.Parse(value, CultureInfo.InvariantCulture);
+        if (type == typeof(long)) return long.Parse(value, CultureInfo.InvariantCulture);
+        if (type == typeof(Vector3))
+        {
+            var p = value.Split(',').Select(s => float.Parse(s, CultureInfo.InvariantCulture)).ToArray();
+            return new Vector3(p[0], p[1], p[2]);
+        }
+        if (type.FullName == "Il2CppSystem.Decimal")
+        {
+            var d = double.Parse(value, CultureInfo.InvariantCulture);
+            var ctor = type.GetConstructor(new[] { typeof(double) });
+            if (ctor != null) return ctor.Invoke(new object[] { d });
+            var op = type.GetMethods(BindingFlags.Public | BindingFlags.Static).FirstOrDefault(m => m.Name == "op_Implicit" && m.GetParameters()[0].ParameterType == typeof(decimal));
+            if (op != null) return op.Invoke(null, new object[] { (decimal)d });
+        }
         throw new InvalidOperationException($"Can't convert '{value}' to {type.Name}");
     }
 
@@ -300,6 +365,13 @@ public class Harness : MonoBehaviour
         if (o == null) return "null";
         if (o is UnityEngine.Object uo && uo == null) return "destroyed";
         var type = o.GetType();
+        var count0 = type.GetProperty("Count") ?? type.GetProperty("Length");
+        if (count0 != null && type.GetProperty("Item", new[] { typeof(int) }) is { } item0 && !(o is string))
+        {
+            var n = (int)count0.GetValue(o)!;
+            var items = Enumerable.Range(0, Math.Min(n, 60)).Select(i => { var v = item0.GetValue(o, new object[] { i }); return v is Il2CppSystem.Object && !(v is UnityEngine.Object) ? Describe(v) : Short(v); });
+            return $"{type.Name}[{n}] {{\n  {string.Join("\n  ", items)} }}";
+        }
         if (o is Il2CppSystem.Object io && !(o is UnityEngine.Object))
         {
             var props = type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -337,9 +409,20 @@ public class Harness : MonoBehaviour
         var pad = new string(' ', indent * 2);
         var comps = string.Join(",", t.GetComponents<Component>().Select(c => c.GetIl2CppType().Name).Where(n => n != "Transform" && n != "RectTransform"));
         var rect = t.TryCast<RectTransform>();
-        var geo = rect == null ? "" : string.Format(CultureInfo.InvariantCulture, " pos=({0:0.#},{1:0.#}) size=({2:0.#},{3:0.#}) anchor=({4:0.##},{5:0.##})-({6:0.##},{7:0.##}) pivot=({8:0.##},{9:0.##})",
+        var geo = rect == null ? string.Format(CultureInfo.InvariantCulture, " lp=({0:0.##},{1:0.##},{2:0.##}) ls=({3:0.##},{4:0.##},{5:0.##})",
+            t.localPosition.x, t.localPosition.y, t.localPosition.z, t.localScale.x, t.localScale.y, t.localScale.z) : string.Format(CultureInfo.InvariantCulture, " pos=({0:0.#},{1:0.#}) size=({2:0.#},{3:0.#}) anchor=({4:0.##},{5:0.##})-({6:0.##},{7:0.##}) pivot=({8:0.##},{9:0.##})",
             rect.anchoredPosition.x, rect.anchoredPosition.y, rect.sizeDelta.x, rect.sizeDelta.y,
             rect.anchorMin.x, rect.anchorMin.y, rect.anchorMax.x, rect.anchorMax.y, rect.pivot.x, rect.pivot.y);
+        var mf = t.GetComponent<MeshFilter>();
+        var mr = t.GetComponent<MeshRenderer>();
+        if (mf != null && mf.sharedMesh != null)
+        {
+            var b = mf.sharedMesh.bounds;
+            geo += string.Format(CultureInfo.InvariantCulture, " mesh={0} c=({1:0.##},{2:0.##},{3:0.##}) sz=({4:0.##},{5:0.##},{6:0.##})", mf.sharedMesh.name, b.center.x, b.center.y, b.center.z, b.size.x, b.size.y, b.size.z);
+        }
+        if (mr != null && mr.sharedMaterials != null) geo += " mats=" + string.Join("|", mr.sharedMaterials.Select(m => m == null ? "null" : m.name));
+        var box = t.GetComponent<BoxCollider>();
+        if (box != null) geo += string.Format(CultureInfo.InvariantCulture, " box c=({0:0.##},{1:0.##},{2:0.##}) sz=({3:0.##},{4:0.##},{5:0.##})", box.center.x, box.center.y, box.center.z, box.size.x, box.size.y, box.size.z);
         var text = t.GetComponent<TMPro.TMP_Text>();
         var label = text != null ? $" text=\"{text.text?.Replace("\n", "\\n")}\" size={text.fontSize:0.#} font={text.font?.name} color={Hex(text.color)} align={text.alignment}" : "";
         var image = t.GetComponent<Image>();

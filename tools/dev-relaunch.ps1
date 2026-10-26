@@ -7,6 +7,7 @@
 param(
     [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\Moon Sweepers",
     [switch]$NoBuild,
+    [int]$LoadSlot = 0,
     [int]$TimeoutSec = 90
 )
 
@@ -35,6 +36,20 @@ while ((Get-Date) -lt $deadline) {
     if ((Test-Path $log) -and (Get-Item $log).LastWriteTime -gt $started -and (Select-String -Path $log -Pattern "DevHarness: main menu ready" -Quiet)) {
         Start-Sleep -Seconds 2
         Write-Host "Main menu ready." -ForegroundColor Green
+        if ($LoadSlot -gt 0) {
+            $dev = Join-Path $PSScriptRoot "dev.ps1"
+            Start-Sleep -Seconds 4   # past the studio splash
+            & $dev "click menu.home.START GAME" | Out-Null
+            & $dev "click menu.frame.Start screen.Save slot $LoadSlot" | Out-Null
+            & $dev "click menu.frame.Start screen.Play" | Out-Null
+            $inGameBy = (Get-Date).AddSeconds(60)
+            while ((Get-Date) -lt $inGameBy) {
+                Start-Sleep -Seconds 2
+                $probe = & $dev "get find:MoonPrototypeEquipment.Player" 2>$null
+                if ($probe -match '^MoonWalker') { Start-Sleep -Seconds 6; Write-Host "In game (slot $LoadSlot)." -ForegroundColor Green; exit 0 }
+            }
+            throw "Didn't get into the game from slot $LoadSlot."
+        }
         exit 0
     }
 }

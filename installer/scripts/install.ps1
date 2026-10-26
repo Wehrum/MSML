@@ -66,22 +66,36 @@ function Expand-ZipOverwrite([string]$Zip, [string]$Destination) {
     } finally { $archive.Dispose() }
 }
 
+function Set-CfgValue([string]$Text, [string]$Section, [string]$Key, [string]$Value) {
+    # Sets Key = Value inside [Section] of an INI-style BepInEx config, adding the key or section if missing.
+    $lines = New-Object System.Collections.Generic.List[string]
+    if ($Text) { $lines.AddRange([string[]]($Text -split "`r?`n")) }
+    $start = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i].Trim() -eq "[$Section]") { $start = $i; break } }
+    if ($start -lt 0) {
+        $lines.Add(""); $lines.Add("[$Section]"); $lines.Add(""); $lines.Add("$Key = $Value")
+        return ($lines -join "`r`n")
+    }
+    for ($i = $start + 1; $i -lt $lines.Count -and $lines[$i] -notmatch '^\['; $i++) {
+        if ($lines[$i] -match "^$([regex]::Escape($Key))\s*=") { $lines[$i] = "$Key = $Value"; return ($lines -join "`r`n") }
+    }
+    $lines.Insert($start + 1, "$Key = $Value")
+    return ($lines -join "`r`n")
+}
+
 function Set-BepInExConfig([string]$BepInEx) {
-    # BepInEx's own interop generator can't read this game's metadata; we generate the assemblies ourselves.
     $cfgDir = Join-Path $BepInEx "config"
     $cfg = Join-Path $cfgDir "BepInEx.cfg"
     New-Item -ItemType Directory -Force $cfgDir | Out-Null
-    if (Test-Path $cfg) {
-        $text = Get-Content $cfg -Raw
-        if ($text -match '(?m)^UpdateInteropAssemblies\s*=') {
-            $text = $text -replace '(?m)^UpdateInteropAssemblies\s*=.*$', 'UpdateInteropAssemblies = false'
-        } else {
-            $text = $text -replace '(?m)^\[IL2CPP\]\s*$', "[IL2CPP]`r`n`r`nUpdateInteropAssemblies = false"
-        }
-        [IO.File]::WriteAllText($cfg, $text)
-    } else {
-        Set-Content $cfg "[IL2CPP]`r`n`r`nUpdateInteropAssemblies = false"
-    }
+    $text = if (Test-Path $cfg) { Get-Content $cfg -Raw } else { "" }
+    # BepInEx's own interop generator can't read this game's metadata; we generate the assemblies ourselves.
+    $text = Set-CfgValue $text "IL2CPP" "UpdateInteropAssemblies" "false"
+    # Full logging: every level, plus the game's own Unity log, so mod problems show up in LogOutput.log.
+    $text = Set-CfgValue $text "Logging" "UnityLogListening" "true"
+    $text = Set-CfgValue $text "Logging.Disk" "LogLevels" "All"
+    $text = Set-CfgValue $text "Logging.Disk" "WriteUnityLog" "true"
+    $text = Set-CfgValue $text "Logging.Console" "LogLevels" "All"
+    [IO.File]::WriteAllText($cfg, $text)
 }
 
 function Install-UnityLibs([string]$GameDir, [string]$UnityLibs) {

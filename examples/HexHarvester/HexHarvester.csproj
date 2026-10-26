@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <AssemblyName>MoonSweepMods.HexHarvester</AssemblyName>
+    <RootNamespace>MoonSweepMods.HexHarvester</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Engine-independent model code, shared with tools\ModelPreview so previews match the game exactly. -->
+    <Compile Include="..\..\shared\ModelKit\*.cs" Link="ModelKit\%(Filename)%(Extension)" />
+    <Compile Include="..\..\shared\ModelKit.Unity\*.cs" Link="ModelKit\%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

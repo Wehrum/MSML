@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <AssemblyName>MoonSweepMods.DebugMenu</AssemblyName>
+    <RootNamespace>MoonSweepMods.DebugMenu</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>
