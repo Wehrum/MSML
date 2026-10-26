@@ -69,7 +69,7 @@ foreach ($proj in $projects) {
     Step "Building mod $($proj.BaseName)"
     # No commit hash anywhere in the build (version string, or the SourceLink URL in the embedded PDB), so a mod's zip
     # only changes when the mod itself changes.
-    $buildArgs = @("build", $proj.FullName, "-c", "Release", "-nologo", "-v", "m", "-p:DeployToGame=true", "-p:GameDeployRoot=$deploy",
+    $buildArgs = @("build", $proj.FullName, "-c", "Release", "-nologo", "-v", "m", "--no-incremental", "-p:DeployToGame=true", "-p:GameDeployRoot=$deploy",
         "-p:IncludeSourceRevisionInInformationalVersion=false", "-p:EnableSourceLink=false", "-p:EnableSourceControlManagerQueries=false")
     if ($GameDir) { $buildArgs += "-p:GameDir=$GameDir" }
     & dotnet @buildArgs | Out-Host
