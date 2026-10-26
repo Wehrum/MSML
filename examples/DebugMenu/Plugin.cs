@@ -19,13 +19,14 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "moonsweepmods.debugmenu";
     public const string Name = "Debug Menu";
-    public const string Version = "0.1.0";
+    public const string Version = "0.2.0";
 
     internal static ManualLogSource Logger = null!;
 
     public override void Load()
     {
         Logger = Log;
+        GarageOpener.Patch(new HarmonyLib.Harmony(Guid));
         AddComponent<DebugPanel>();
     }
 }
@@ -77,6 +78,8 @@ public class DebugPanel : MonoBehaviour
             if (VehicleSpawner.TakeStatus() is { } spawned) Show(spawned);
             Clock.Tick();
             if (Clock.TakeStatus() is { } clock) Show(clock);
+            GarageOpener.Tick();
+            if (GarageOpener.TakeStatus() is { } garage) Show(garage);
 
             var show = _visible && Game.Equipment != null && PauseOpen();
             if (show && (_canvas == null || _canvas.WasCollected || !_canvas)) Build();
@@ -142,6 +145,8 @@ public class DebugPanel : MonoBehaviour
         y += RowH + 8;
         Button(panel, "Empty hopper", Pad, y, half, RowH, () => Cheats.SetVehicleDust(false));
         Button(panel, "Fill hopper", Pad + half + 8, y, half, RowH, () => Cheats.SetVehicleDust(true));
+        y += RowH + 8;
+        Button(panel, "Open garage menu", Pad, y, inner, RowH, GarageOpener.Request);
         y += RowH + 18;
 
         Text(panel, "CLOCK", Pad, y, inner, 26, 17, true, Cream, TextAlignmentOptions.MidlineLeft);
