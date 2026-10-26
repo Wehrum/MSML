@@ -177,7 +177,8 @@ foreach ($dir in Get-ChildItem (Join-Path $deploy "Mods") -Directory -ErrorActio
 }
 Remove-Item -Recurse -Force $deploy
 
-# 5. GitHub release folder: get.ps1 (the one-liner), the installer, mods, and release.json with checksums -----------
+# 5. GitHub release folder: get.ps1 (the one-liner), the installer, helper scripts, release.json with checksums.
+#    Mods are not part of MSML releases; their zips stay in artifacts\mods for authors to share.
 $release = Join-Path $Artifacts "release"
 Step "Assembling release files in $release"
 Remove-Item -Recurse -Force $release -ErrorAction SilentlyContinue
@@ -189,12 +190,6 @@ $scriptEntries = @(foreach ($s in "common.ps1", "uninstall.ps1") {
     Copy-Item $src $release
     [ordered]@{ file = $s; sha256 = (Get-FileHash $src -Algorithm SHA256).Hash }
 })
-$modEntries = @(foreach ($m in $modZips) {
-    Copy-Item $m $release
-    $file = Split-Path -Leaf $m
-    $match = [regex]::Match($file, '^(.*)-([0-9][^-]*)\.zip$')
-    [ordered]@{ name = $match.Groups[1].Value; version = $match.Groups[2].Value; file = $file; sha256 = (Get-FileHash $m -Algorithm SHA256).Hash; bytes = (Get-Item $m).Length }
-})
 [ordered]@{
     version   = $Version
     published = (Get-Date).ToUniversalTime().ToString("s") + "Z"
@@ -202,7 +197,6 @@ $modEntries = @(foreach ($m in $modZips) {
     scripts   = $scriptEntries
     requires  = $pack.requires
     testedGames = $pack.testedGames
-    mods      = $modEntries
 } | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $release "release.json") -Encoding utf8
 
 Write-Host ("Built {0} ({1:N1} MB): BepInEx + mod loader {2}" -f $zip, ((Get-Item $zip).Length / 1MB), $loaderVersion) -ForegroundColor Green

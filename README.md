@@ -10,14 +10,17 @@ Close Moon Sweepers, open PowerShell, and paste:
 irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 ```
 
-Run the same command again to update MSML, including after a Moon Sweepers update. Your mods and settings are kept. Options:
+Run the same command again to update MSML, including after a Moon Sweepers update. Your mods and settings are kept.
+To uninstall (your Mods folder is kept):
 
 ```powershell
-# Also install mods from the release:
-& ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Mods HexHarvester,DebugMenu
-# Uninstall (keeps your Mods folder):
 & ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Uninstall
 ```
+
+### Adding mods
+
+MSML doesn't include any mods. To add one, download the mod's `.zip`, then in the main menu choose **MODS > ADD MOD**
+and pick it, or extract it into `<game>\Mods\`. Restart the game to load it (**RESTART TO APPLY**).
 
 MSML adds a **MODS** entry to the game's main menu, with a screen where players add, enable and disable mods,
 RimWorld-style. Mods are separate downloads that players drop into `<game>\Mods`, or add in-game with **ADD MOD**.
@@ -190,7 +193,7 @@ release the next time they run the install command, because `releases/latest/dow
 newest release. To build without publishing, run `tools\build-installer.ps1 -Version x.y.z` (`-SkipBuild` reuses
 the built tools).
 
-The build writes `artifacts\release\`, and those files become the release assets:
+The build writes `artifacts\release\`, and those files become the release assets. Mods aren't part of MSML releases: each example mod's drop-in zip is written to `artifacts\mods\` for its author to share.
 
 | File | What it is |
 |---|---|
@@ -198,7 +201,6 @@ The build writes `artifacts\release\`, and those files become the release assets
 | `release.json` | Version, SHA-256 checksums of every file, required Unity/metadata version, tested game builds, and the mod list |
 | `MSML-<Version>.zip` (about 80 MB) | The installer. It's only downloaded when something needs installing, and also works offline: extract it and run `Install.bat` |
 | `common.ps1`, `uninstall.ps1` | Small helper scripts `get.ps1` uses before deciding whether to download the zip |
-| `<Mod>-<version>.zip` | One drop-in zip per project in `examples/` (`-Mods` in the one-liner, or ADD MOD in-game) |
 
 ### Game version pairing
 

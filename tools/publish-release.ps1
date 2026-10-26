@@ -78,7 +78,6 @@ try {
 
     # 3. GitHub release ------------------------------------------------------------------------------
     $tested = ($info.testedGames | Where-Object { $_.msml -eq $Version } | ForEach-Object { "Moon Sweepers v$($_.game) (Steam build $($_.steamBuild))" }) -join ", "
-    $mods = ($info.mods | ForEach-Object { "- **$($_.name)** $($_.version): ``& ([scriptblock]::Create((irm https://github.com/$Repo/releases/latest/download/get.ps1))) -Mods $($_.name)``" }) -join "`n"
     $body = @"
 $Notes
 
@@ -97,11 +96,13 @@ Run the same command again any time to update, including after a Moon Sweepers u
 - Tested with: $tested
 - Requires Unity $($info.requires.unity) / IL2CPP metadata v$($info.requires.metadata). The installer refuses unsupported game versions.
 
-## Mods in this release
+## Adding mods
 
-$mods
+MSML doesn't include any mods. To add one:
 
-Manage mods in-game from **MODS** in the main menu.
+1. Download the mod's ``.zip``.
+2. In the main menu, choose **MODS > ADD MOD** and pick the zip (or extract it into ``<game>\Mods\``).
+3. Restart the game (**RESTART TO APPLY**).
 "@
     $notesFile = Join-Path $env:TEMP "msml-notes-$Version.md"
     Set-Content $notesFile $body -Encoding utf8

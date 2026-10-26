@@ -5,16 +5,15 @@
         irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 
     With options:
-        & ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Mods HexHarvester,DebugMenu
+        & ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Force
         ... -Uninstall      remove MSML (your Mods folder is kept)
-        ... -Force          reinstall even if up to date
+        ... -Force          reinstall even if up to date (also installs on an unsupported game version)
         ... -GameDir "D:\SteamLibrary\steamapps\common\Moon Sweepers"
 
     Downloads the latest release from GitHub, checks it against the release's SHA-256 checksums, finds Moon Sweepers
     through Steam, and runs the bundled installer. Running it again updates to the newest release.
 #>
 param(
-    [string[]]$Mods,
     [switch]$Uninstall,
     [switch]$Force,
     [string]$GameDir,
@@ -49,7 +48,6 @@ function Test-Admin {
 function Restart-Elevated {
     Say "Windows needs administrator rights to write to the game folder. Approve the prompt to continue." Yellow
     $parts = @()
-    if ($Mods) { $parts += "-Mods " + (($Mods | ForEach-Object { "'$_'" }) -join ",") }
     if ($Uninstall) { $parts += "-Uninstall" }
     if ($Force) { $parts += "-Force" }
     if ($GameDir) { $parts += "-GameDir '$GameDir'" }
@@ -149,34 +147,9 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "The installer reported an error (see above)." }
     }
 
-    # 6. Optional mods --------------------------------------------------------------------------------
-    if ($Mods) {
-        $modsDir = Join-Path $GameDir "Mods"
-        $statePath = Join-Path $GameDir "BepInEx\config\MoonSweepMods.ModLoader.mods.json"
-        $enabled = [Collections.Generic.List[string]]::new()
-        if (Test-Path $statePath) { foreach ($k in (Get-Content $statePath -Raw | ConvertFrom-Json).Enabled) { $enabled.Add($k) } }
-        foreach ($name in $Mods) {
-            $mod = $release.mods | Where-Object { $_.name -eq $name } | Select-Object -First 1
-            if (-not $mod) { Say "No mod named '$name' in this release. Available: $(($release.mods | ForEach-Object name) -join ', ')" Yellow; continue }
-            $modZip = Join-Path $work $mod.file
-            Fetch $mod.file $modZip
-            if ((Get-FileHash $modZip -Algorithm SHA256).Hash -ne $mod.sha256) { throw "Mod download '$($mod.file)' failed its checksum." }
-            $target = Join-Path $modsDir $mod.name
-            if (Test-Path $target) { Remove-Item -Recurse -Force $target }
-            $tmp = Join-Path $work "mod-$($mod.name)"
-            [IO.Compression.ZipFile]::ExtractToDirectory($modZip, $tmp)
-            $inner = Get-ChildItem $tmp -Directory | Select-Object -First 1
-            New-Item -ItemType Directory -Force $modsDir | Out-Null
-            Move-Item $inner.FullName $target
-            if (-not ($enabled -contains $mod.name)) { $enabled.Add($mod.name) }
-            Say "Installed mod $($mod.name) $($mod.version) (enabled)" Green
-        }
-        New-Item -ItemType Directory -Force (Split-Path $statePath) | Out-Null
-        @{ Enabled = @($enabled) } | ConvertTo-Json | Set-Content $statePath -Encoding utf8
-    }
-
     Write-Host ""
-    Say "Done! Launch Moon Sweepers from Steam. Manage mods from MODS in the main menu." Green
+    Say "Done! Launch Moon Sweepers from Steam." Green
+    Say "To add a mod: download its .zip, then in the main menu choose MODS > ADD MOD (or extract it into $GameDir\Mods)."
     Say "To update later, run the same command again."
 } catch {
     Write-Host ""
