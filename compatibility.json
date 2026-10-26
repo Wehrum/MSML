@@ -6,6 +6,13 @@
                  },
     "tested":  [
                    {
+                       "msml":  "0.10.1",
+                       "game":  "1.0.4",
+                       "steamBuild":  "26203101",
+                       "gameAssemblySha256":  "82B2E7F2A049C332E836FD9B492CE2FA16C1600DE1D276B4B79742DAF15ADEA0",
+                       "date":  "2026-10-26"
+                   },
+                   {
                        "msml":  "0.10.0",
                        "game":  "1.0.4",
                        "steamBuild":  "26203101",
