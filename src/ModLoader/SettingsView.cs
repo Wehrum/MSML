@@ -33,7 +33,7 @@ internal static class SettingsView
         var view = kit.Rect(parent, "Settings", x, y, w, h);
         MoonSimpleKit.Sprite9(view, "Background", MoonSimpleKit.Rounded(false), new Color(0.02f, 0.025f, 0.035f, 0.35f));
         view.gameObject.AddComponent<RectMask2D>();
-        var content = kit.Rect(view, "Content", 0, 0, w, 0);
+        var content = kit.Rect(view, "Content", 0, 0, w - ScrollbarW, 0);
         var scroll = view.gameObject.AddComponent<ScrollRect>();
         scroll.content = content;
         scroll.viewport = view;
@@ -42,8 +42,38 @@ internal static class SettingsView
         scroll.movementType = ScrollRect.MovementType.Clamped;
         scroll.inertia = false;
         scroll.scrollSensitivity = 40;
+        AddScrollbar(kit, view, scroll);
         return content;
     }
+
+    /// <summary>Room taken by <see cref="AddScrollbar"/> at the right of a scroll area.</summary>
+    public const float ScrollbarW = 18f;
+
+    /// <summary>A slim scrollbar down the right side of a scroll area, shown only when there's more than fits.</summary>
+    public static void AddScrollbar(MoonSimpleKit kit, RectTransform view, ScrollRect scroll)
+    {
+        var size = view.sizeDelta;
+        var bar = kit.Rect(view, "Scrollbar", size.x - ScrollbarW + 4, 8, 8, size.y - 16);
+        MoonSimpleKit.Sprite9(bar, "Track", MoonSimpleKit.Rounded(false), new Color(1f, 1f, 1f, 0.06f));
+        var area = kit.Rect(bar, "Sliding area", 0, 0, 8, size.y - 16);
+        var handle = kit.Rect(area, "Handle", 0, 0, 8, 40);
+        handle.anchorMin = Vector2.zero;
+        handle.anchorMax = Vector2.one;
+        handle.sizeDelta = Vector2.zero;
+        handle.anchoredPosition = Vector2.zero;
+        var look = MoonSimpleKit.Sprite9(handle, "Look", MoonSimpleKit.Rounded(false), new Color(0.95f, 0.9f, 0.8f, 0.55f));
+        look.raycastTarget = true;   // draggable
+        var scrollbar = bar.gameObject.AddComponent<Scrollbar>();
+        scrollbar.handleRect = handle;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.transition = Selectable.Transition.None;
+        scrollbar.navigation = new Navigation { mode = Navigation.Mode.None };
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+    }
+
+    // Mods whose settings are folded open, by title (in lists of several mods; they start folded).
+    private static readonly HashSet<string> Open = new();
 
     /// <summary>Settings a player can see in a config file (not tagged <see cref="ModSettings.Hidden"/>).</summary>
     public static List<ConfigEntryBase> Visible(ConfigFile config) =>
@@ -67,8 +97,25 @@ internal static class SettingsView
             if (entries.Count == 0) continue;
             if (headings)
             {
-                kit.Text(content, title.ToUpperInvariant(), 16, y, inner, 40, 26, MoonSimpleKit.Cream, true, TextAlignmentOptions.MidlineLeft);
-                y += 48;
+                // A bar per mod: click it to fold its settings open or closed.
+                var open = Open.Contains(title);
+                var bar = kit.Rect(content, "Mod " + title, 8, y, inner + 16, 52);
+                var barLook = MoonSimpleKit.Sprite9(bar, "Bar", MoonSimpleKit.Rounded(false), new Color(1f, 1f, 1f, open ? 0.09f : 0.05f));
+                barLook.raycastTarget = true;   // the bar takes clicks (the kit's sprites don't by default)
+                kit.Text(bar, title.ToUpperInvariant(), 16, 6, inner - 160, 40, 24, MoonSimpleKit.Cream, true, TextAlignmentOptions.MidlineLeft);
+                kit.Text(bar, open ? "HIDE  -" : $"{entries.Count} SETTING{(entries.Count == 1 ? "" : "S")}  +", inner - 200, 6, 200, 40, 16,
+                    MoonSimpleKit.Faint, true, TextAlignmentOptions.MidlineRight);
+                var button = bar.gameObject.AddComponent<Button>();
+                button.transition = Selectable.Transition.None;
+                button.navigation = new Navigation { mode = Navigation.Mode.None };
+                var key = title;
+                button.onClick.AddListener(DelegateSupport.ConvertDelegate<UnityEngine.Events.UnityAction>(new Action(() =>
+                {
+                    if (!Open.Remove(key)) Open.Add(key);
+                    Redraw();
+                })));
+                y += 60;
+                if (!open) continue;
             }
 
             var sections = entries.Select(e => e.Definition.Section).Distinct().ToList();

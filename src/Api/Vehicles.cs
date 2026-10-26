@@ -199,7 +199,7 @@ public static class Vehicles
     }
 
     /// <summary>The "name" in mod.json next to the assembly, else its [BepInPlugin] name.</summary>
-    private static string? ModNameOf(Assembly assembly)
+    internal static string? ModNameOf(Assembly assembly)
     {
         try
         {

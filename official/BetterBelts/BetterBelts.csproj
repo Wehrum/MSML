@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Better Belts: pneumatic tubes and tube boosters. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <UseMsmlApi>true</UseMsmlApi>
+    <AssemblyName>MSML.BetterBelts</AssemblyName>
+    <RootNamespace>MSML.BetterBelts</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

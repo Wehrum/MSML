@@ -25,6 +25,7 @@ public class Plugin : BasePlugin
         new Harmony(Guid).PatchAll(typeof(MenuHooks));
         new Harmony(Guid + ".pause").PatchAll(typeof(PauseSettings.Hooks));
         MSML.Crew.JoinCheck.Apply();
+        MSML.CrewMessages.Patches.Apply();
         VersionCheck.Start();
         Log.LogInfo($"Mod Loader {Version}: mods folder is {ModPaths.ModsDir}");
     }

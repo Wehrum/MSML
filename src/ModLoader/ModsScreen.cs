@@ -330,7 +330,7 @@ internal static class ModsScreen
         var view = kit.Rect(_root, name, x, ListTop, ColW, ListBottom - ListTop);
         MoonSimpleKit.Sprite9(view, "Background", MoonSimpleKit.Rounded(false), new Color(0.02f, 0.025f, 0.035f, 0.35f));
         view.gameObject.AddComponent<RectMask2D>();
-        var content = kit.Rect(view, "Content", 0, 0, ColW, 0);
+        var content = kit.Rect(view, "Content", 0, 0, ColW - SettingsView.ScrollbarW, 0);
         var scroll = view.gameObject.AddComponent<ScrollRect>();
         scroll.content = content;
         scroll.viewport = view;
@@ -339,6 +339,7 @@ internal static class ModsScreen
         scroll.movementType = ScrollRect.MovementType.Clamped;
         scroll.inertia = false;
         scroll.scrollSensitivity = 40;
+        SettingsView.AddScrollbar(kit, view, scroll);
         return content;
     }
 
@@ -396,7 +397,7 @@ internal static class ModsScreen
     {
         var kit = _menu!.kit;
         Clear(content);
-        var width = ColW - 16;
+        var width = ColW - 16 - SettingsView.ScrollbarW;
         var y = 8f;
         foreach (var mod in mods)
         {

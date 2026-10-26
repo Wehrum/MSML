@@ -10,8 +10,9 @@ using UnityEngine;
 namespace MSML;
 
 /// <summary>
-/// Multiplayer support for modded vehicles. Crewmates refer to vehicles by catalog index, so everyone in a crew needs
-/// the same vehicle mods (same ids at the same indexes).
+/// Multiplayer support for mod content everyone in a crew needs: modded vehicles and belt types. Crewmates refer to
+/// vehicles by catalog index, so everyone in a crew needs the same vehicle mods (same ids at the same indexes), and
+/// the same belt types (or crewmates' belts would move at different speeds).
 /// <list type="bullet">
 /// <item><b>Joining:</b> a host with modded vehicles advertises its version as "1.0.4 + mods: Hex Harvester" and its
 /// vehicles in the "msml.vehicles" lobby field. Players without the same vehicles are turned away by the game's own
@@ -45,13 +46,29 @@ internal static class Crew
         Vehicles.All.OrderBy(v => v.Index).Select(v => new Entry
         {
             Id = v.Id, Name = v.Name, Mod = v.ModName, Index = v.Index, Price = v.Price, UpgradePriceScale = v.UpgradePriceScale,
-        }).ToList();
+        }).Concat(Belts.Types.OrderBy(t => t.Kind).Select(t => new Entry
+        {
+            Id = t.Id, Name = t.Name, Mod = t.ModName, Index = -1,
+        })).ToList();
 
-    /// <summary>"1.0.4 + mods: Hex Harvester" (mod names) with modded vehicles registered, else the plain game version.</summary>
+    private static bool HasCrewContent => Vehicles.All.Count > 0 || Belts.Types.Count > 0;
+
+    private static bool _applied;
+
+    /// <summary>Applies the crew patches (once), for mods that add things everyone in a crew needs.</summary>
+    internal static void Apply()
+    {
+        if (_applied) return;
+        _applied = true;
+        new Harmony("msml.api.crew").PatchAll(typeof(Crew));
+        JoinCheck.Apply();
+    }
+
+    /// <summary>"1.0.4 + mods: Hex Harvester" (mod names) with crew content registered, else the plain game version.</summary>
     internal static string AdvertisedVersion()
     {
-        if (Vehicles.All.Count == 0) return Application.version;
-        return Application.version + " + mods: " + string.Join(", ", Vehicles.All.OrderBy(v => v.Index).Select(v => v.ModName).Distinct());
+        if (!HasCrewContent) return Application.version;
+        return Application.version + " + mods: " + string.Join(", ", Local().Select(e => e.Mod ?? e.Name).Distinct());
     }
 
     /// <summary>Same vehicle ids at the same indexes (prices may differ: the host's are used).</summary>
@@ -80,7 +97,7 @@ internal static class Crew
         if (json == _published) return;
         var lobby = new CSteamID(MoonSteamLobby.lobby);
         SteamMatchmaking.SetLobbyData(lobby, VersionKey, AdvertisedVersion());
-        SteamMatchmaking.SetLobbyData(lobby, VehiclesKey, Vehicles.All.Count == 0 ? "" : json);
+        SteamMatchmaking.SetLobbyData(lobby, VehiclesKey, HasCrewContent ? json : "");
         _published = json;
     }
 
@@ -93,7 +110,7 @@ internal static class Crew
             ClearCrewTerms();
             _published = "";
             PublishIfHost();
-            if (Vehicles.All.Count > 0) Log.Info($"Crew created; advertised as '{AdvertisedVersion()}'.");
+            if (HasCrewContent) Log.Info($"Crew created; advertised as '{AdvertisedVersion()}'.");
         }
         catch (Exception e) { Log.Error("Advertising modded vehicles to the crew failed: " + e); }
     }
