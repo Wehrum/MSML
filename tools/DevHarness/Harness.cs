@@ -27,6 +27,9 @@ namespace MoonSweepMods.DevHarness;
 ///   call &lt;expr&gt;.Method [args]     invoke a method (args: numbers, true/false, enum names, "strings")
 ///   click &lt;expr&gt;                  invoke the first Button.onClick under an object
 ///   rayclick &lt;expr&gt;               click like the mouse: UI raycast at the object's centre (catches blocked clicks)
+///   cs &lt;file.cs&gt; [args]          compile and run a C# script in the game, no restart (see ScriptHost, tools\cs.ps1)
+///   eval &lt;code&gt;                   run a C# expression or statements (eval64 takes base64, for multi-line code)
+///   unload &lt;name&gt; / scripts        undo a script's patches and hooks / list loaded scripts
 ///   quit
 /// </summary>
 [BepInPlugin("moonsweepmods.devharness", "Dev Harness", "0.1.0")]
@@ -110,30 +113,53 @@ public class Harness : MonoBehaviour
         Instance = this;
         _inFile = Path.Combine(Paths.BepInExRootPath, "devharness.in");
         _outFile = Path.Combine(Paths.BepInExRootPath, "devharness.out");
+        // Commands written before this game started (e.g. a "quit" meant for the previous session) are stale.
+        var started = System.Diagnostics.Process.GetCurrentProcess().StartTime;
+        if (File.Exists(_inFile) && File.GetLastWriteTime(_inFile) < started) File.Delete(_inFile);
         Plugin.Logger.LogInfo($"Dev harness listening on {_inFile}");
     }
 
     private void Update()
     {
+        ScriptHost.Tick();
+        if (_batch != null) { ContinueBatch(); return; }
         if (Time.realtimeSinceStartup < _next) return;
-        _next = Time.realtimeSinceStartup + 0.25f;
+        _next = Time.realtimeSinceStartup + 0.1f;
         if (!File.Exists(_inFile)) return;
 
         string[] lines;
         try { lines = File.ReadAllLines(_inFile); File.Delete(_inFile); }
         catch (IOException) { return; }
 
-        var output = new StringBuilder();
+        _batch = new StringBuilder();
         foreach (var raw in lines)
+            if (raw.Trim().Length > 0) _pending.Enqueue(raw.Trim());
+        ContinueBatch();
+    }
+
+    // Commands run in order; a script that waits (a coroutine) pauses the batch until it finishes.
+    private readonly Queue<string> _pending = new();
+    private StringBuilder? _batch;
+
+    private void ContinueBatch()
+    {
+        if (ScriptHost.Busy) return;
+        if (ScriptHost.TakeFinished() is { } finished) _batch!.AppendLine(finished);
+        while (_pending.Count > 0)
         {
-            var line = raw.Trim();
-            if (line.Length == 0) continue;
-            output.AppendLine("> " + line);
-            try { output.AppendLine(Run(line)); }
-            catch (Exception e) { output.AppendLine("ERROR: " + (e.InnerException ?? e)); }
+            var line = _pending.Dequeue();
+            _batch!.AppendLine("> " + (line.StartsWith("eval64 ") ? "eval" : line));
+            try
+            {
+                var result = Run(line);
+                if (!(ScriptHost.Busy && result.Length == 0)) _batch.AppendLine(result);
+            }
+            catch (Exception e) { _batch.AppendLine("ERROR: " + (e.InnerException ?? e)); }
+            if (ScriptHost.Busy) return;
         }
-        output.AppendLine("<<done>>");
-        File.AppendAllText(_outFile, output.ToString());
+        _batch!.AppendLine("<<done>>");
+        File.AppendAllText(_outFile, _batch.ToString());
+        _batch = null;
     }
 
     private static string Run(string line)
@@ -186,22 +212,22 @@ public class Harness : MonoBehaviour
                 return "clicked " + button.name;
             }
             case "rayclick":
+                return RayClick(TransformOf(Resolve(rest)).Cast<RectTransform>());
+            case "cs":
             {
-                // Like a real mouse click: UI raycast at the object's centre, then the nearest Button above the top hit.
-                var rt = TransformOf(Resolve(rest)).Cast<RectTransform>();
-                var canvas = rt.GetComponentInParent<Canvas>().rootCanvas;
-                var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
-                var screen = RectTransformUtility.WorldToScreenPoint(cam, rt.TransformPoint(rt.rect.center));
-                var ped = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { position = screen };
-                var hits = new Il2CppSystem.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
-                UnityEngine.EventSystems.EventSystem.current.RaycastAll(ped, hits);
-                if (hits.Count == 0) return $"nothing hit at {screen}";
-                var top = hits[0].gameObject;
-                var button = top.GetComponentInParent<Button>();
-                if (button == null) return $"top hit {top.name} has no Button";
-                button.onClick.Invoke();
-                return $"hit {top.name}, clicked {button.name}";
+                // cs <file.cs> [args...]: compile and run a script in the game (see ScriptHost)
+                var parts = rest.StartsWith("\"") ? new[] { rest[1..rest.IndexOf('"', 1)] }.Concat(rest[(rest.IndexOf('"', 1) + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries)).ToArray()
+                                                  : rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                return ScriptHost.RunFile(parts[0], parts.Skip(1).ToArray());
             }
+            case "eval64":
+                return ScriptHost.Eval(Encoding.UTF8.GetString(System.Convert.FromBase64String(rest)));
+            case "eval":
+                return ScriptHost.Eval(rest);
+            case "unload":
+                return ScriptHost.Unload(rest);
+            case "scripts":
+                return ScriptHost.List();
             case "drive":
             {
                 // drive <throttle> <steer> <seconds> [clean]: overrides the driven vehicle's input (keyboard injection doesn't reach the game)
@@ -224,7 +250,31 @@ public class Harness : MonoBehaviour
 
     // ---- expression evaluation ---------------------------------------------------------------
 
-    private static object? Resolve(string expr)
+    /// <summary>Like a real mouse click: UI raycast at the object's centre, then the nearest Button above the top hit.</summary>
+    internal static string RayClick(RectTransform rt)
+    {
+        var canvas = rt.GetComponentInParent<Canvas>().rootCanvas;
+        var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+        var screen = RectTransformUtility.WorldToScreenPoint(cam, rt.TransformPoint(rt.rect.center));
+        var ped = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { position = screen };
+        var hits = new Il2CppSystem.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        UnityEngine.EventSystems.EventSystem.current.RaycastAll(ped, hits);
+        if (hits.Count == 0) return $"nothing hit at {screen}";
+        var top = hits[0].gameObject;
+        var button = top.GetComponentInParent<Button>();
+        if (button == null) return $"top hit {top.name} has no Button";
+        button.onClick.Invoke();
+        return $"hit {top.name}, clicked {button.name}";
+    }
+
+    /// <summary>Saves a screenshot at the end of the frame.</summary>
+    internal static void Screenshot(string path)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        Instance!.StartCoroutine(CaptureAtEndOfFrame(path).WrapToIl2Cpp());
+    }
+
+    internal static object? Resolve(string expr)
     {
         var steps = Tokenize(expr, out var root);
         object? current = root switch
@@ -395,7 +445,7 @@ public class Harness : MonoBehaviour
 
     // ---- output -------------------------------------------------------------------------------
 
-    private static Transform? TransformOf(object? o) => o switch
+    internal static Transform? TransformOf(object? o) => o switch
     {
         Transform t => t,
         GameObject g => g.transform,
@@ -403,7 +453,7 @@ public class Harness : MonoBehaviour
         _ => null,
     };
 
-    private static string Describe(object? o)
+    internal static string Describe(object? o)
     {
         if (o == null) return "null";
         if (o is UnityEngine.Object uo && uo == null) return "destroyed";
@@ -446,7 +496,7 @@ public class Harness : MonoBehaviour
     private static string Hex(Color c) =>
         $"#{(int)(c.r * 255):X2}{(int)(c.g * 255):X2}{(int)(c.b * 255):X2}{(int)(c.a * 255):X2}";
 
-    private static void Dump(Transform? t, StringBuilder sb, int indent, int depth)
+    internal static void Dump(Transform? t, StringBuilder sb, int indent, int depth)
     {
         if (t == null) { sb.AppendLine("not a transform"); return; }
         var pad = new string(' ', indent * 2);

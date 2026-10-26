@@ -92,6 +92,10 @@ public override void Load()
 
 Only use `ShowInGame` for settings that take effect immediately. [`official/MoonSweeperPlus`](official/MoonSweeperPlus) is a complete example.
 
+### Testing without restarting
+
+[`tools\cs.ps1`](tools/cs.ps1) runs C# inside the running game (compiled on the fly), so you can poke at game code, spawn and drive vehicles, or try a Harmony patch in seconds. See [`tools/scripts`](tools/scripts).
+
 ### Making models
 
 Models are code, built with [`shared/ModelKit`](shared/ModelKit) (boxes, tapered blocks, prisms and hex columns, cylinders, rods, spheres, radial patterns), for example [`HexHarvesterDesign.cs`](examples/HexHarvester/Design/HexHarvesterDesign.cs). The same design renders in the game, through `UnityModelBuilder`, and offline without the game:

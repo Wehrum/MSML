@@ -1,11 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Development-only plugin: lets scripts drive the running game (screenshots, UI dumps, method calls).
-       Never shipped in the installer. Use it via tools\dev.ps1. -->
+  <!-- Development-only plugin: lets scripts drive the running game (screenshots, UI dumps, method calls, and
+       hot-loaded C# scripts compiled in-game with Roslyn). Never shipped in the installer. Use it via tools\dev.ps1
+       and tools\cs.ps1. -->
   <PropertyGroup>
     <IsModProject>true</IsModProject>
     <ModKind>DevPlugin</ModKind>
     <AssemblyName>MoonSweepMods.DevHarness</AssemblyName>
     <RootNamespace>MoonSweepMods.DevHarness</RootNamespace>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- 4.4 is the newest Roslyn that runs on the game's bundled .NET 6 runtime. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.4.0" />
+  </ItemGroup>
+  <!-- DeployToGame only copies the plugin DLL; Roslyn and its dependencies go next to it. -->
+  <Target Name="DeployRoslyn" AfterTargets="DeployToGame" Condition="'$(DeployToGame)' == 'true'">
+    <Copy SourceFiles="@(ReferenceCopyLocalPaths)" Condition="'%(Extension)' == '.dll'"
+          DestinationFolder="$(GameDeployRoot)\BepInEx\plugins\$(AssemblyName)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

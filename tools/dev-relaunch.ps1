@@ -22,6 +22,8 @@ if ($proc) {
     if (-not $proc.WaitForExit(15000)) { $proc.CloseMainWindow() | Out-Null; if (-not $proc.WaitForExit(10000)) { throw "The game didn't close." } }
     Start-Sleep -Seconds 2   # let Steam notice the game exited
 }
+# A "quit" the harness never read would close the next launch as soon as it starts.
+Remove-Item (Join-Path $GameDir "BepInEx\devharness.in"), (Join-Path $GameDir "BepInEx\devharness.out") -ErrorAction SilentlyContinue
 
 if (-not $NoBuild) {
     & dotnet build (Join-Path $RepoRoot "MoonSweepMods.sln") -c Release -nologo -v q "-p:GameDir=$GameDir" | Out-Host

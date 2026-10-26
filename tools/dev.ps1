@@ -27,5 +27,9 @@ while ((Get-Date) -lt $deadline) {
         Get-Content $out | Where-Object { $_ -ne "<<done>>" }
         exit 0
     }
+    if (-not (Get-Process MoonSweepers -ErrorAction SilentlyContinue)) {
+        if (Test-Path $out) { Get-Content $out }
+        throw "Moon Sweepers exited (crashed?) while running the command. See BepInEx\LogOutput.log and the Windows Application event log."
+    }
 }
 throw "No response from the dev harness within $TimeoutSec s (is MoonSweepMods.DevHarness deployed?)."
