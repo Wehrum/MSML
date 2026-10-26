@@ -106,7 +106,7 @@ try {
 
     # Bring local main up to date (the release is built from it).
     if ((Invoke-Git @("status", "--porcelain")) | Where-Object { $_ }) { throw "Working tree has uncommitted changes; commit or stash them, then run tools\auto-release.ps1." }
-    $current = (Invoke-Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
+    $current = @(Invoke-Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
     if ($current -ne $Branch) { throw "Checked out branch is '$current', not '$Branch'. Switch to $Branch, then run tools\auto-release.ps1." }
     Invoke-Git @("merge", "-q", "--ff-only", "origin/$Branch") | Out-Null
 
