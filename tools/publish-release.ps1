@@ -34,7 +34,9 @@ $tag = "v$Version"
 
 function Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Native([string]$exe, [string[]]$a) {
-    & $exe @a
+    # git/gh write progress to stderr; under Windows PowerShell that must not count as a failure.
+    $out = & { $ErrorActionPreference = "Continue"; & $exe @a 2>&1 }
+    $out | ForEach-Object { Write-Host "    $_" }
     if ($LASTEXITCODE -ne 0) { throw "Failed ($LASTEXITCODE): $exe $($a -join ' ')" }
 }
 
@@ -81,7 +83,7 @@ try {
     $body = @"
 $Notes
 
-## Install or update
+## Install, update or uninstall
 
 Close Moon Sweepers, then paste this into PowerShell:
 
@@ -89,7 +91,7 @@ Close Moon Sweepers, then paste this into PowerShell:
 irm https://github.com/$Repo/releases/latest/download/get.ps1 | iex
 ``````
 
-Run the same command again any time to update, including after a Moon Sweepers update. Your mods and settings are kept.
+It shows what's installed and asks what to do (install, update, reinstall or uninstall). Run it again after a Moon Sweepers update. Your mods and settings are kept.
 
 ## Compatibility
 

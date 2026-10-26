@@ -1,8 +1,8 @@
 # MSML: Moon Sweepers Mod Loader
 
-A mod loader for **Moon Sweepers** (Unity 6000.6.0f1, IL2CPP metadata v108), built on BepInEx 6.
+![example of mod loader in-game](docs/images/mod_loader_example.png)
 
-## Install or update (players)
+## Install, update or uninstall
 
 Close Moon Sweepers, open PowerShell, and paste:
 
@@ -10,12 +10,9 @@ Close Moon Sweepers, open PowerShell, and paste:
 irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 ```
 
-Run the same command again to update MSML, including after a Moon Sweepers update. Your mods and settings are kept.
-To uninstall (your Mods folder is kept):
-
-```powershell
-& ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Uninstall
-```
+That's the only command you need. It shows what's installed and asks what to do: **Install**, or **Update /
+Reinstall / Uninstall** if MSML is already installed. Run it again after a Moon Sweepers update to refresh MSML.
+Your mods and settings are kept, including on uninstall (your `Mods` folder stays).
 
 ### Adding mods
 
@@ -25,82 +22,6 @@ and pick it, or extract it into `<game>\Mods\`. Restart the game to load it (**R
 MSML adds a **MODS** entry to the game's main menu, with a screen where players add, enable and disable mods,
 RimWorld-style. Mods are separate downloads that players drop into `<game>\Mods`, or add in-game with **ADD MOD**.
 This repo holds the loader, the installer pipeline, and example mods to build from.
-
-## How it works
-
-| Piece | Where | What it does |
-|---|---|---|
-| Installer | [`installer/`](installer/), built by [`tools/build-installer.ps1`](tools/build-installer.ps1) | Installs BepInEx (patched for this game) and the mod loader, and generates the game's interop assemblies on the player's machine |
-| Startup patcher | [`src/ModLoader.Patcher`](src/ModLoader.Patcher) → `BepInEx\patchers` | Runs before any plugin loads. It mirrors the mods enabled in-game from `<game>\Mods` into `BepInEx\plugins\MoonSweepMods.ModLoader.Active`, so BepInEx loads exactly those |
-| Mods screen | [`src/ModLoader`](src/ModLoader) → `BepInEx\plugins` | Adds MODS to the main menu and the Mods screen, built from the game's own UI kit (`MoonSimpleKit`) |
-| Shared code | [`src/ModLoader.Shared`](src/ModLoader.Shared) | Mod discovery (`mod.json`, `[BepInPlugin]`), enable state, paths. Compiled into both projects |
-| Example mods | [`examples/`](examples/) | Mods built on the loader. Each is packaged as its own zip (see [Example mods](#example-mods)) |
-| ModelKit | [`shared/ModelKit`](shared/ModelKit) | Engine-independent procedural 3D models, shared by mods and the offline previewer (see [Making models](#making-models)) |
-
-The Mods screen:
-
-- **Lists:** DISABLED and ENABLED columns. Click a mod to select it; double-click it or use its arrow to move it.
-- **Details:** a picture, name, version, author, description, and load status (running / failed to load / changes
-  pending).
-- **Buttons:** ADD MOD (a Windows file picker for `.zip`/`.dll`), OPEN MODS FOLDER, and RESTART TO APPLY (the game's
-  own confirmation dialog, then a relaunch through Steam).
-- **Changes need a restart:** BepInEx can't unload plugins. The screen and the main-menu entry say when changes are
-  waiting.
-- **Main menu only:** that's the only place mods can be changed.
-
-State lives in `BepInEx\config\MoonSweepMods.ModLoader.mods.json`, and new mods start disabled. Copying enabled mods
-at startup (instead of loading them straight from `Mods\`) keeps `Mods\` unlocked while the game runs, so players
-can add or update mods at any time.
-
-### Why the patched BepInEx
-
-Stock BepInEx doesn't work with this game yet:
-
-1. BepInEx's bundled Cpp2IL only reads IL2CPP metadata up to v106; Moon Sweepers uses v108.
-2. Il2CppInterop has no struct definition for Unity 6000.6's native `Il2CppClass` layout, so it crashes on startup
-   (`Base class Il2CppSystem.Object is value type and can't be inherited from`).
-
-[`tools/build-tools.ps1`](tools/build-tools.ps1) builds a current Cpp2IL and a patched Il2CppInterop that includes
-[`tools/il2cppinterop/Class_108_0.cs`](tools/il2cppinterop/Class_108_0.cs). That class layout was recovered from the
-game's exported `il2cpp_class_*` functions and checked against live game data.
-
-## Developer setup (once, and again after every game update)
-
-Requirements: Windows, git, and Moon Sweepers installed through Steam. The .NET SDKs the tools need are installed into
-`.tools/` if missing, so nothing is installed system-wide.
-
-```powershell
-# Close the game first. The game folder is found through Steam; pass -GameDir to override.
-powershell -ExecutionPolicy Bypass -File .\tools\setup-modding.ps1
-dotnet build -c Release
-```
-
-`setup-modding.ps1` builds the tools under `.tools/` (git-ignored). Then it runs the same installer players use
-([`installer/scripts/install.ps1`](installer/scripts/install.ps1)), which:
-
-- installs BepInEx Bleeding Edge build 791 (IL2CPP x64)
-- copies the patched Il2CppInterop into `BepInEx\core`
-- generates the interop assemblies into `BepInEx\interop`. This only happens when `GameAssembly.dll` or the tools
-  changed; pass `-ForceRegenerate` to force it.
-- sets `UpdateInteropAssemblies = false` (BepInEx's own generator fails on this game)
-
-`dotnet build` then deploys the loader and the example mods into the game. After a game update, re-run setup with
-`-SkipBuild`.
-
-## Building mods
-
-Each project sets `IsModProject` and a `ModKind`, which decides where `dotnet build` deploys it
-(see [`Directory.Build.props`](Directory.Build.props)):
-
-| `ModKind` | Deploys to | Used by |
-|---|---|---|
-| `Mod` (default) | `<game>\Mods\<ProjectName>\` | Mods, for example [`examples/HelloWorld`](examples/HelloWorld) |
-| `LoaderPlugin` | `<game>\BepInEx\plugins\<AssemblyName>\` | `src/ModLoader` |
-| `LoaderPatcher` | `<game>\BepInEx\patchers\<AssemblyName>\` | `src/ModLoader.Patcher` |
-| `DevPlugin` | `<game>\BepInEx\plugins\<AssemblyName>\` | `tools/DevHarness` (never shipped) |
-
-Pass `-p:DeployToGame=false` to build without deploying, or `-p:GameDir="D:\...\Moon Sweepers"` for another game
-folder. The log is at `<game>\BepInEx\LogOutput.log`.
 
 ### Creating a mod
 
@@ -154,129 +75,6 @@ Models are code, built with [`shared/ModelKit`](shared/ModelKit) (boxes, tapered
 ```
 
 The previewer culls back faces like Unity does, draws a 1 m/5 m ground grid with the cleaning width marked in orange, and adds shadows and part outlines. Put designs in `examples/<Mod>/Design/*.cs`, implementing `IModelDesign`, and the previewer picks them up automatically.
-
-### Browsing the game's code
-
-Open `<game>\BepInEx\interop\Assembly-CSharp.dll` in [ILSpy](https://github.com/icsharpcode/ILSpy) or
-[dnSpyEx](https://github.com/dnSpyEx/dnSpy) to see the game's classes, fields, and method signatures. Most gameplay
-code is in the `MoonCleaners` namespace (for example `MoonMainMenu`, `MoonSimpleKit` and `MoonSteamLobby`). Method
-bodies are native code, so the interop DLLs only show signatures. To understand what a method does, hook it with
-Harmony and log, or poke at it live with the dev harness.
-
-### Dev harness (testing in the running game)
-
-[`tools/DevHarness`](tools/DevHarness) is a dev-only plugin that lets scripts drive the game:
-
-```powershell
-.\tools\dev-relaunch.ps1                     # close the game, build + deploy everything, relaunch, wait for the menu
-.\tools\dev-relaunch.ps1 -LoadSlot 1         # ...and load save slot 1
-.\tools\dev.ps1 "dump menu.home 2"           # UI hierarchy with positions, colors, text
-.\tools\dev.ps1 "click menu.home.MODS" "shot C:\temp\mods.png"
-.\tools\dev.ps1 "get menu.kit.Orange" "call menu.Back"
-.\tools\dev.ps1 "get find:MoonPrototypeVehicle.CleaningWidth"   # find:<Type>[#n] finds live game objects
-```
-
-Expressions start at `menu` (the `MoonMainMenu`), `find:Type`, `/Path/To/GameObject`, or `static:Full.Type.Name:Member`. `set` assigns values. See the comment at the top of [`Harness.cs`](tools/DevHarness/Harness.cs).
-
-Logging: the installer sets BepInEx to log every level, including Unity's own log, to `<game>\BepInEx\LogOutput.log`.
-
-## Releasing
-
-Publish a release (builds everything, tags it, and uploads it to GitHub):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\publish-release.ps1 -Version 0.5.0 -Notes "What changed"
-```
-
-It needs the GitHub CLI (`winget install GitHub.cli`, then `gh auth login`) and a clean working tree. Players get the
-release the next time they run the install command, because `releases/latest/download/...` always points at the
-newest release. To build without publishing, run `tools\build-installer.ps1 -Version x.y.z` (`-SkipBuild` reuses
-the built tools).
-
-The build writes `artifacts\release\`, and those files become the release assets. Mods aren't part of MSML releases: each example mod's drop-in zip is written to `artifacts\mods\` for its author to share.
-
-| File | What it is |
-|---|---|
-| `get.ps1` | The one-liner script. It reads `release.json`, checks the game, and installs or updates |
-| `release.json` | Version, SHA-256 checksums of every file, required Unity/metadata version, tested game builds, and the mod list |
-| `MSML-<Version>.zip` (about 80 MB) | The installer. It's only downloaded when something needs installing, and also works offline: extract it and run `Install.bat` |
-| `common.ps1`, `uninstall.ps1` | Small helper scripts `get.ps1` uses before deciding whether to download the zip |
-
-### Game version pairing
-
-Each MSML release is paired with the game it was built for:
-
-- **[`compatibility.json`](compatibility.json)** holds the required engine (`requires`: Unity 6000.6 and IL2CPP
-  metadata v108, the versions the Il2CppInterop patch is built for) and a `tested` list. Each `tested` entry records
-  the MSML version, the game version (for example `1.0.4`), the Steam build id and a `GameAssembly.dll` SHA-256.
-  `build-installer.ps1` adds an entry from your own game install on every build, and refuses to build if your game's
-  engine doesn't match `requires`.
-- **The installer and `get.ps1`** read the player's game version, Steam build, Unity and metadata versions, and
-  `GameAssembly.dll` hash.
-  - They refuse an unsupported engine; `-Force` installs anyway.
-  - They report whether this exact game build was tested.
-  - They regenerate the interop assemblies after a game update.
-- **In game**, the mod loader compares the running game with the release's tested version. This is local only, with
-  no network calls. On a mismatch, or if Steam updated the game since MSML was installed, opening **MODS** shows a
-  "Version mismatch" dialog once per session. The player can proceed at their own risk or go back.
-
-When Moon Sweepers updates:
-
-1. Run `tools\setup-modding.ps1 -SkipBuild`.
-2. Test the mods.
-3. Publish a new release. Its build adds the new game version to `compatibility.json`.
-4. If the engine (Unity or metadata) changed, update the Il2CppInterop patch and `requires` first.
-
-### The installer
-
-- It finds the game through Steam, or asks for the folder.
-- It installs BepInEx, the patched Il2CppInterop runtime and the mod loader, and creates `<game>\Mods`.
-- It downloads Unity's base libraries and generates the interop assemblies from the player's own copy of the game,
-  using self-contained Cpp2IL and Il2CppInterop exes bundled in the zip (about 20 seconds).
-- It turns on full logging (every level, plus Unity's log) in `BepInEx\LogOutput.log`.
-- Re-running it only regenerates when the game or the tools changed. If it can't write to the game folder, it asks
-  for administrator rights.
-
-| Path in the installer zip | Contents |
-|---|---|
-| `Install.bat`, `Uninstall.bat`, `scripts\` | Installer (PowerShell, launched with `-ExecutionPolicy Bypass`) |
-| `payload\BepInEx.zip` | Pinned BepInEx build |
-| `payload\core\` | Patched Il2CppInterop runtime |
-| `payload\tools\` | Self-contained `Cpp2IL.exe` and `Il2CppInterop.CLI.exe` (trimmed) |
-| `payload\plugins\`, `payload\patchers\` | The mod loader |
-| `THIRD-PARTY-NOTICES.txt`, `licenses\` | License notices (Il2CppInterop is LGPL, so the patch source ships with it) |
-
-Game files and anything generated from them (`BepInEx\interop`, dummy assemblies, Unity libraries) are never put in
-the zips, and must never be redistributed. Releases can't be built in CI, because compiling needs interop assemblies
-generated from a local copy of the game.
-
-For multiplayer, everyone in a session should have the same mods enabled.
-
-## Known limitations
-
-- **Restart to apply:** BepInEx can't unload plugins, so enabling or disabling mods takes effect after a restart.
-- **Load order:** BepInEx orders plugins by their `[BepInDependency]` declarations; the Mods screen doesn't reorder.
-- **Interface injection:** Unity 6000.6 merged `implementedInterfaces` into the interface-offsets table, so
-  `ClassInjector` can't yet register injected types that implement Il2Cpp interfaces. Plain `MonoBehaviour`s,
-  delegates, and Harmony patches work. For UI hover and click, use the game's `MoonWorkshopHover` component or
-  `Button.onClick`, as the Mods screen does.
-- **Stripped Unity APIs:** some Unity methods are stripped from the game. Examples are `ColorUtility.ToHtmlStringRGBA`,
-  `ScreenCapture.CaptureScreenshot(string)`, and all of IMGUI's controls (`GUI.Button`, `GUI.Box`, ...). They throw
-  `Method unstripping failed` or `MissingMethodException`. Use uGUI (`Canvas`, `Button`, TextMeshPro) for UI.
-- **Spawned vehicle models:** `MoonPrototypeModels.Vehicle()` returns the model inactive. Activate it before
-  `MoonPrototypeVehicle.Initialize`, or the vehicle has physics but no visible body or wheel contacts.
-- **Log warnings:** `Class::Init signatures have been exhausted, using a substitute!` and "Interop assemblies are
-  possibly out of date" appear in the log. Both are harmless.
-- **Pinned versions:** BepInEx build 791, Cpp2IL `b5ad444` and Il2CppInterop `81a6f78`. Newer upstream releases may
-  make parts of this unnecessary.
-
-## Uninstalling (developer)
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\uninstall-bepinex.ps1   # -Force skips the confirmation
-```
-
-This removes BepInEx and the mod loader, keeping `<game>\Mods`.
 
 ## Licensing notes
 

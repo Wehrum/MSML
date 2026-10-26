@@ -3,7 +3,7 @@
     Installs BepInEx (patched for Moon Sweepers) and the mod loader into the game folder.
 
 .DESCRIPTION
-    Used both by the player-facing Install.bat and by tools\setup-modding.ps1. Expects a payload folder laid out as:
+    Used by get.ps1 (the player-facing one-liner) and by tools\setup-modding.ps1. Expects a payload folder laid out as:
 
         payload\pack.json                      pack metadata (written by tools\build-tools.ps1 / build-installer.ps1)
         payload\BepInEx.zip                    BepInEx Bleeding Edge (IL2CPP x64)
@@ -229,13 +229,12 @@ try {
     Write-Host ""
     Write-Host "Done! Launch Moon Sweepers from Steam as usual." -ForegroundColor Green
     Write-Host "Manage mods from MODS in the game's main menu. Mods live in: $modsDir"
-    Write-Host "If the game updates, run this installer again."
     exit 0
 } catch {
     Write-Host ""
     Write-Host "Install failed: $($_.Exception.Message)" -ForegroundColor Red
     if ($_.Exception.GetBaseException() -is [UnauthorizedAccessException]) {
-        Write-Host "Windows blocked writing to the game folder. Try right-clicking Install.bat > Run as administrator." -ForegroundColor Yellow
+        Write-Host "Windows blocked writing to the game folder. Try running PowerShell as administrator." -ForegroundColor Yellow
     }
     exit 1
 }

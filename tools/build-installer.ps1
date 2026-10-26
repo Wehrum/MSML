@@ -10,7 +10,7 @@
 
     1. Builds/reuses the tools payload (tools\build-tools.ps1).
     2. Builds the mod loader (src\ModLoader + src\ModLoader.Patcher) into the payload.
-    3. Adds Install.bat / Uninstall.bat / README.txt (installer\) and third-party notices, and zips it.
+    3. Adds the install scripts (installer\scripts) and third-party notices, and zips it. get.ps1 (the one-liner) runs it.
     4. Builds every project under examples\ and zips each one as a drop-in mod.
 
     Players don't need .NET, git, or this repo. Game-derived files (interop/dummy assemblies, Unity libraries) are

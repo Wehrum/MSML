@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Removes BepInEx (and every installed mod) from the Moon Sweepers folder, restoring the vanilla game.
-    Same as the Uninstall.bat shipped in the installer.
+    Same as choosing Uninstall in the MSML one-liner.
 #>
 [CmdletBinding()]
 param(
