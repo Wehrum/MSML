@@ -31,6 +31,15 @@ public sealed class HexHarvesterDesign : IModelDesign
     private const string Shell = "shell", Dark = "dark", Orange = "orange", Glass = "glass", Metal = "metal", Cyan = "cyan";
     private const string Rubber = "rubber", Red = "red", Hazard = "hazard", Bristle = "bristle", Steel = "steel";
 
+    /// <summary>The silo's glass panes and the dust inside (in the game: the garage silo's own materials).</summary>
+    public const string SiloGlass = "siloGlass", SiloDust = "siloDust";
+
+    /// <summary>Group holding the dust column; scale its height (pivot at the bottom of the glass) to show the fill.</summary>
+    public const string SiloDustGroup = "Silo dust";
+
+    private static readonly V3 SiloBase = new(0, 1.67f, -1.75f);
+    private const float SiloGlassBottom = 0.25f, SiloGlassHeight = 2.2f;
+
     public Model Build()
     {
         var m = new Model("Hex Harvester");
@@ -38,6 +47,8 @@ public sealed class HexHarvesterDesign : IModelDesign
         m.Palette[Dark] = Rgba.Hex("2B2D34", smoothness: 0.35f);
         m.Palette[Orange] = Rgba.Hex("FF7A2E", smoothness: 0.45f);
         m.Palette[Glass] = Rgba.Hex("6FA7C4", a: 0.45f, smoothness: 0.9f);
+        m.Palette[SiloGlass] = Rgba.Hex("BFD9E6", a: 0.25f, smoothness: 0.95f);
+        m.Palette[SiloDust] = Rgba.Hex("8C8478", smoothness: 0.1f);
         m.Palette[Metal] = Rgba.Hex("9AA0A8", metallic: 0.8f, smoothness: 0.55f);
         m.Palette[Cyan] = Rgba.Hex("39D6E6", emission: 1.2f);
         m.Palette[Rubber] = Rgba.Hex("1A1B1F", smoothness: 0.15f);
@@ -55,6 +66,7 @@ public sealed class HexHarvesterDesign : IModelDesign
         Chassis(body);
         Cab(body);
         Silo(body);
+        SiloDustColumn(m);
         Rear(body);
         PushFrame(body);
         HeadFrame(body);
@@ -162,12 +174,18 @@ public sealed class HexHarvesterDesign : IModelDesign
 
     private static void Silo(Shapes s)
     {
-        var c = new V3(0, 1.67f, -1.75f);
-        // Hex tower: plinth, white body, orange band, cyan fill window, dark tapered cap.
-        s.HexColumn(Dark, c, 1.62f, 0.25f);
-        s.HexColumn(Shell, c + V3.Up * 0.25f, 1.52f, 2.2f);
-        s.HexColumn(Orange, c + V3.Up * 1.25f, 1.56f, 0.32f);
-        s.HexColumn(Cyan, c + V3.Up * 0.55f, 1.56f, 0.08f);
+        var c = SiloBase;
+        // Hex tower: plinth, glass panes (the dust inside shows through), rings, dark tapered cap.
+        // Rings are open bands (no top/bottom faces), which would otherwise show through the glass as slabs.
+        void Ring(string mat, float y, float height, float radius = 1.56f) =>
+            s.Prism(mat, c + V3.Up * y, c + V3.Up * (y + height), radius, 6, false, 30, -1, false);
+        s.HexColumn(Dark, c, 1.62f, SiloGlassBottom);
+        s.HexColumn(SiloGlass, c + V3.Up * SiloGlassBottom, 1.52f, SiloGlassHeight);
+        Ring(Dark, SiloGlassBottom, 0.06f);
+        Ring(Cyan, 0.55f, 0.05f);
+        Ring(Orange, 1.25f, 0.18f);
+        Ring(Dark, 1.95f, 0.05f);
+        Ring(Dark, SiloGlassBottom + SiloGlassHeight - 0.06f, 0.06f);
         s.HexColumn(Dark, c + V3.Up * 2.45f, 1.6f, 0.45f, 30, 1.05f);
         s.HexColumn(Metal, c + V3.Up * 2.9f, 0.62f, 0.18f);
         s.HexColumn(Orange, c + V3.Up * 3.08f, 0.5f, 0.06f);
@@ -193,6 +211,16 @@ public sealed class HexHarvesterDesign : IModelDesign
             s.Rod(Metal, new V3(x, 1.7f, lz), new V3(x, 4.4f, lz), 0.03f);
         for (var y = 1.9f; y < 4.4f; y += 0.32f)
             s.Rod(Metal, new V3(-0.28f, y, lz), new V3(0.28f, y, lz), 0.022f);
+    }
+
+    /// <summary>
+    /// The dust inside the silo, as its own group with the pivot at the bottom of the glass: in the game its height is
+    /// scaled to the hopper's fill (1 = full). Built full here, so previews show a full silo.
+    /// </summary>
+    private static void SiloDustColumn(Model m)
+    {
+        var dust = new Shapes(m.Group(SiloDustGroup, SiloBase + V3.Up * SiloGlassBottom));
+        dust.HexColumn(SiloDust, V3.Zero, 1.44f, SiloGlassHeight - 0.04f);
     }
 
     // ---- rear ---------------------------------------------------------------------------------------

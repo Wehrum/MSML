@@ -125,6 +125,25 @@ internal static class VehiclePatches
         catch (Exception e) { Log.Error($"Setting up {v} failed: {e}"); }
     }
 
+    // ---- per-frame hook --------------------------------------------------------------------------------
+
+    private static float _updateErrorAt = -999f;
+
+    [HarmonyPatch(typeof(MoonPrototypeVehicle), nameof(MoonPrototypeVehicle.Update))]
+    [HarmonyPostfix]
+    private static void AfterVehicleUpdate(MoonPrototypeVehicle __instance)
+    {
+        if (Modded(__instance.Index) is not { Update: { } update } v) return;
+        try { update(__instance); }
+        catch (Exception e)
+        {
+            // Every frame would flood the log; report at most every 10 s.
+            if (Time.unscaledTime - _updateErrorAt < 10f) return;
+            _updateErrorAt = Time.unscaledTime;
+            Log.Error($"{v}'s Update failed: {e}");
+        }
+    }
+
     // ---- garage: offers and card pictures ------------------------------------------------------------
 
     /// <summary>Adds (or re-prices) the garage offers of modded vehicles that have a price.</summary>
@@ -262,6 +281,28 @@ internal static class VehiclePatches
             Log.Warning($"Couldn't load the icon of {v} from {v.IconPath}: {e.Message}");
             return null;
         }
+    }
+
+    // ---- upgrade prices -------------------------------------------------------------------------------
+
+    [HarmonyPatch(typeof(MoonVehicleUpgrades), nameof(MoonVehicleUpgrades.PriceScale))]
+    [HarmonyPrefix]
+    private static bool UpgradePriceScale(ref int vehicle, ref Il2CppSystem.Decimal __result)
+    {
+        if (Modded(vehicle) is not { } v) return true;
+        if (v.UpgradePriceScale is not { } scale) { vehicle = v.BaseVehicle; return true; }
+        __result = new Il2CppSystem.Decimal(scale);
+        return false;
+    }
+
+    [HarmonyPatch(typeof(MoonVehicleUpgrades), nameof(MoonVehicleUpgrades.Price))]
+    [HarmonyPrefix]
+    private static bool UpgradePrice(MoonVehicleUpgrades.Def def, int vehicle, int level, ref Il2CppSystem.Decimal __result)
+    {
+        if (def == null || Modded(vehicle) is not { } v) return true;
+        if (!v.UpgradePrices.TryGetValue(def.kind, out var prices) || level < 0 || level >= prices.Length) return true;
+        __result = new Il2CppSystem.Decimal((double)prices[level]);
+        return false;
     }
 
     // ---- hide the driver in closed cabs --------------------------------------------------------------

@@ -15,6 +15,47 @@ namespace MSML.HexHarvester;
 internal static class HarvesterModel
 {
     private static Model? _design;
+    private static readonly Dictionary<string, Material> GarageMaterials = new();
+    private static Material? _siloGlass;
+
+    /// <summary>Clear glass for the silo panes (URP Lit, transparent), so the dust inside shows.</summary>
+    private static Material SiloGlass()
+    {
+        if (_siloGlass != null && !_siloGlass.WasCollected) return _siloGlass;
+        var m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Hex Harvester silo glass" };
+        m.SetFloat("_Surface", 1);
+        m.SetFloat("_Blend", 0);
+        m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        m.SetFloat("_SrcBlendAlpha", (float)UnityEngine.Rendering.BlendMode.One);
+        m.SetFloat("_DstBlendAlpha", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        m.SetFloat("_ZWrite", 0);
+        m.SetFloat("_Smoothness", 0.95f);
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        m.SetColor("_BaseColor", new Color(0.75f, 0.88f, 0.95f, 0.18f));
+        m.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return _siloGlass = m;
+    }
+
+    /// <summary>
+    /// A material from a garage in the world (its silo's dust), so the harvester's silo looks like the garage's.
+    /// Null when no garage is loaded yet (the design's palette colour is used, and <see cref="SiloFill"/> swaps it in
+    /// later).
+    /// </summary>
+    internal static Material? GarageMaterial(string name)
+    {
+        if (GarageMaterials.TryGetValue(name, out var cached) && cached != null && !cached.WasCollected) return cached;
+        foreach (var garage in MoonGarage.all)
+        {
+            if (garage == null) continue;
+            foreach (var r in garage.GetComponentsInChildren<Renderer>(true))
+                foreach (var m in r.sharedMaterials)
+                    if (m != null && m.name == name) return GarageMaterials[name] = m;
+        }
+        return null;
+    }
 
     public static void Build(GameObject model, MoonPrototypeModels kit)
     {
@@ -47,6 +88,8 @@ internal static class HarvesterModel
                 "glass" => kit.glass,
                 "metal" => kit.metal,
                 "cyan" => kit.cyan,
+                HexHarvesterDesign.SiloGlass => SiloGlass(),
+                HexHarvesterDesign.SiloDust => GarageMaterial("Garage - Container dust"),
                 _ => null,
             };
             if (m == null && design.Palette.TryGetValue(name, out var c)) m = kit.Mat("Hex Harvester " + name, UnityModelBuilder.ToColor(c));

@@ -30,7 +30,7 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 | Mod | Description | |
 |---|---|---|
 | **MoonSweeper+** | Quality-of-life fixes, each with its own setting. So far: the vehicle camera stays where you point it instead of snapping back behind the vehicle (auto recenter can be turned back on, with your own delay). | [`mods/`](mods) |
-| **Hex Harvester** | A new vehicle, sold in the garage for $25,000 (adjustable in SETTINGS): a six-wheeled harvester with a 25 m sweeper head and a 9,000 kg silo that clears a whole hex in one pass. It's delivered in front of the garage, since it doesn't fit in the hall. | [`mods/`](mods) |
+| **Hex Harvester** | A new vehicle, sold in the garage for $100,000: a six-wheeled harvester with a 25 m sweeper head that clears a whole hex in one pass, and a glass silo (9,000 kg) that visibly fills with dust. Its price and upgrade prices are adjustable in SETTINGS. It's delivered in front of the garage, since it doesn't fit in the hall. | [`mods/`](mods) |
 
 Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS**) and, for mods that support it, in the pause menu under **MOD SETTINGS**.
 
@@ -110,7 +110,7 @@ Vehicles.Register(new ModVehicle("yourmod.bigsweeper", "Big sweeper", MoonProtot
 });
 ```
 
-Bought modded vehicles are saved by id in records the unmodded game ignores, so saves never break when a mod is removed. Also available: `Heft`, `Speed`, `Turn`, `Cargo`, `Ready` (called when one is set up in the world), `HideDriver` (for closed cabs) and `DeliverOutsideGarage` (for vehicles too big for the garage hall). [`official/HexHarvester`](official/HexHarvester) is a complete example, and [`tools/scripts/render-icon.cs`](tools/scripts/render-icon.cs) renders a garage picture from the in-game model.
+Bought modded vehicles are saved by id in records the unmodded game ignores, so saves never break when a mod is removed. Also available: `Heft`, `Speed`, `Turn`, `Cargo`, `UpgradePriceScale` (the garage's upgrade prices are each upgrade's base price times this; the Mega Vacuum Rover's is 3) and `UpgradePrices` (exact prices per upgrade and level), `Ready` (called when one is set up in the world), `Update` (called every frame, e.g. to show the hopper level), `HideDriver` (for closed cabs) and `DeliverOutsideGarage` (for vehicles too big for the garage hall). Price, summary and upgrade prices can be changed while the game runs. [`official/HexHarvester`](official/HexHarvester) is a complete example, and [`tools/scripts/render-icon.cs`](tools/scripts/render-icon.cs) renders a garage picture from the in-game model.
 
 ### Testing without restarting
 

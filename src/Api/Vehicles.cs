@@ -84,6 +84,18 @@ public sealed class ModVehicle
     public string Summary { get; set; } = "";
 
     /// <summary>
+    /// Multiplier for the garage's upgrade prices (each upgrade's base prices × this). Null: the base vehicle's
+    /// (Push sweeper 0.5, Ride-on 1, Crew transport 2, Lunar sweeper 2.5, Mega vacuum rover 3). Can change at runtime.
+    /// </summary>
+    public double? UpgradePriceScale { get; set; }
+
+    /// <summary>
+    /// Exact upgrade prices in dollars, per upgrade and level (index 0 = level I), replacing the scaled price:
+    /// <c>UpgradePrices[MoonVehicleUpgrades.Kind.Speed] = new[] { 1000, 2500, 6000 }</c>. Levels not listed use the scale.
+    /// </summary>
+    public Dictionary<MoonVehicleUpgrades.Kind, int[]> UpgradePrices { get; } = new();
+
+    /// <summary>
     /// Picture for the garage card: a PNG (512x512 with a transparent background, like the game's). A relative path is
     /// resolved from the registering mod's folder. Without one the card has no picture.
     /// </summary>
@@ -99,6 +111,12 @@ public sealed class ModVehicle
 
     /// <summary>Called when a vehicle of this type is set up in the world.</summary>
     public Action<MoonPrototypeVehicle>? Ready { get; set; }
+
+    /// <summary>
+    /// Called every frame for each vehicle of this type in the world (after the game's own update): animate parts,
+    /// show the hopper level, ... Keep it cheap.
+    /// </summary>
+    public Action<MoonPrototypeVehicle>? Update { get; set; }
 
     /// <summary>Hide the local player's body while they drive it (for closed cabs the player model clips through).</summary>
     public bool HideDriver { get; set; }

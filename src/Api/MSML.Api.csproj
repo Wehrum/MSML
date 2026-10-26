@@ -5,6 +5,6 @@
     <ModKind>LoaderPlugin</ModKind>
     <AssemblyName>MSML.Api</AssemblyName>
     <RootNamespace>MSML</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 </Project>
