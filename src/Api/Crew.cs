@@ -13,9 +13,10 @@ namespace MSML;
 /// Multiplayer support for modded vehicles. Crewmates refer to vehicles by catalog index, so everyone in a crew needs
 /// the same vehicle mods (same ids at the same indexes).
 /// <list type="bullet">
-/// <item><b>Joining:</b> a host with modded vehicles advertises its version as "1.0.4 + mods: Hex harvester" and its
+/// <item><b>Joining:</b> a host with modded vehicles advertises its version as "1.0.4 + mods: Hex Harvester" and its
 /// vehicles in the "msml.vehicles" lobby field. Players without the same vehicles are turned away by the game's own
-/// version check (unmodded players see the mod list in its message); players with them see the plain version and join.
+/// version check, with a message saying which mods to add or turn off (unmodded players see the mod list in the
+/// game's message); players with them see the plain version and join.
 /// A modded player can still join an unmodded crew: their modded vehicles just aren't sold there.</item>
 /// <item><b>Garage terms:</b> the host charges for purchases, so crewmates' garages show the host's prices, and don't
 /// offer modded vehicles the host doesn't have.</item>
@@ -34,6 +35,7 @@ internal static class Crew
     {
         public string Id { get; set; } = "";
         public string Name { get; set; } = "";
+        public string? Mod { get; set; }
         public int Index { get; set; }
         public double? Price { get; set; }
         public double? UpgradePriceScale { get; set; }
@@ -42,14 +44,14 @@ internal static class Crew
     private static List<Entry> Local() =>
         Vehicles.All.OrderBy(v => v.Index).Select(v => new Entry
         {
-            Id = v.Id, Name = v.Name, Index = v.Index, Price = v.Price, UpgradePriceScale = v.UpgradePriceScale,
+            Id = v.Id, Name = v.Name, Mod = v.ModName, Index = v.Index, Price = v.Price, UpgradePriceScale = v.UpgradePriceScale,
         }).ToList();
 
-    /// <summary>"1.0.4 + mods: Hex harvester" with modded vehicles registered, else the plain game version.</summary>
+    /// <summary>"1.0.4 + mods: Hex Harvester" (mod names) with modded vehicles registered, else the plain game version.</summary>
     internal static string AdvertisedVersion()
     {
         if (Vehicles.All.Count == 0) return Application.version;
-        return Application.version + " + mods: " + string.Join(", ", Vehicles.All.OrderBy(v => v.Index).Select(v => v.Name));
+        return Application.version + " + mods: " + string.Join(", ", Vehicles.All.OrderBy(v => v.Index).Select(v => v.ModName).Distinct());
     }
 
     /// <summary>Same vehicle ids at the same indexes (prices may differ: the host's are used).</summary>
@@ -100,22 +102,86 @@ internal static class Crew
 
     private static bool _reading;
 
-    [HarmonyPatch(typeof(SteamMatchmaking), nameof(SteamMatchmaking.GetLobbyData))]
-    [HarmonyPostfix]
-    private static void AfterGetLobbyData(CSteamID steamIDLobby, string pchKey, ref string __result)
+    /// <summary>
+    /// The join check. Applied by the mod loader even without vehicle mods, so a player missing a crew's mods is
+    /// told which ones to add.
+    /// </summary>
+    internal static class JoinCheck
     {
-        if (_reading || pchKey != VersionKey || string.IsNullOrEmpty(__result)) return;
-        try
+        private static bool _applied;
+
+        internal static void Apply()
         {
-            _reading = true;
-            var theirs = Parse(SteamMatchmaking.GetLobbyData(steamIDLobby, VehiclesKey)) ?? new List<Entry>();
-            var plainHost = !__result.Contains(" + mods: ");
-            // Unmodded host: compatible (our vehicles just aren't sold there). Modded host: only with the same vehicles.
-            if (plainHost ? __result == Application.version : SameVehicles(theirs) && __result.StartsWith(Application.version + " + mods: "))
-                __result = Application.version;
+            if (_applied) return;
+            _applied = true;
+            new Harmony("msml.api.crewjoin").PatchAll(typeof(JoinCheck));
         }
-        catch (Exception e) { Log.Error("Checking a crew's mods failed: " + e); }
-        finally { _reading = false; }
+
+        [HarmonyPatch(typeof(SteamMatchmaking), nameof(SteamMatchmaking.GetLobbyData))]
+        [HarmonyPostfix]
+        private static void AfterGetLobbyData(CSteamID steamIDLobby, string pchKey, ref string __result)
+        {
+            if (_reading || pchKey != VersionKey || string.IsNullOrEmpty(__result)) return;
+            try
+            {
+                _reading = true;
+                var theirs = Parse(SteamMatchmaking.GetLobbyData(steamIDLobby, VehiclesKey)) ?? new List<Entry>();
+                var plainHost = !__result.Contains(" + mods: ");
+                // Unmodded host: compatible (our vehicles just aren't sold there). Modded host: only with the same vehicles.
+                if (plainHost ? __result == Application.version : SameVehicles(theirs) && __result.StartsWith(Application.version + " + mods: "))
+                {
+                    __result = Application.version;
+                    _refusal = null;
+                }
+                else if (!plainHost)
+                {
+                    _refusal = DescribeMismatch(__result, theirs);
+                    _refusedVersion = __result;
+                }
+            }
+            catch (Exception e) { Log.Error("Checking a crew's mods failed: " + e); }
+            finally { _reading = false; }
+        }
+
+        // The game turns a mismatch away with "That crew plays version {0}. You have {1}. Update the game on Steam...";
+        // for a modded crew that's replaced with what to install or turn off.
+        private static string? _refusal;
+        private static string _refusedVersion = "";
+
+        private static string DescribeMismatch(string hostVersion, List<Entry> theirs)
+        {
+            var hostGame = hostVersion.Substring(0, hostVersion.IndexOf(" + mods: ", StringComparison.Ordinal));
+            string ModOf(Entry e) => string.IsNullOrWhiteSpace(e.Mod) ? e.Name : e.Mod!;
+            string List(IEnumerable<string> names) => string.Join(", ", names.Distinct());
+
+            var mine = Local();
+            var missing = theirs.Where(t => mine.All(m => m.Id != t.Id)).Select(ModOf).ToList();
+            var extra = mine.Where(m => theirs.All(t => t.Id != m.Id)).Select(ModOf).ToList();
+            var lines = new List<string>();
+            if (hostGame != Application.version)
+                lines.Add($"That crew plays version {hostGame}. You have {Application.version}. Update the game on Steam to play together.");
+            if (missing.Count > 0)
+                lines.Add($"This crew uses mods you don't have: {List(missing)}. Add them in MODS, then join again.");
+            if (extra.Count > 0)
+                lines.Add($"This crew doesn't use these mods of yours: {List(extra)}. Turn them off in MODS, then join again.");
+            if (missing.Count == 0 && extra.Count == 0 && hostGame == Application.version)
+                lines.Add($"Your mods don't match this crew's ({List(theirs.Select(ModOf))}). Use the same mods and versions as the host, then join again.");
+            return string.Join(" ", lines);
+        }
+
+        [HarmonyPatch(typeof(MoonSteamLobby), nameof(MoonSteamLobby.SetStatus))]
+        [HarmonyPrefix]
+        private static void BeforeSetStatus(ref string message, bool error)
+        {
+            try
+            {
+                if (!error || _refusal == null || message == null || !message.Contains(_refusedVersion)) return;
+                Log.Info("Turned away from a modded crew: " + _refusal);
+                message = _refusal;
+                _refusal = null;
+            }
+            catch (Exception e) { Log.Error("Explaining a crew's mods failed: " + e); }
+        }
     }
 
     [HarmonyPatch(typeof(MoonSteamLobby), nameof(MoonSteamLobby.OnEntered))]

@@ -54,6 +54,9 @@ public sealed class ModVehicle
     /// <summary>Index in MoonPrototypeCatalog.Vehicles for this session (-1 before registering). Don't save it.</summary>
     public int Index { get; internal set; } = -1;
 
+    /// <summary>Name of the mod that registered it (its mod.json "name"), used to tell crewmates what to install.</summary>
+    public string ModName { get; internal set; } = "";
+
     // ---- stats (set before registering) ------------------------------------------------------------
 
     public MoonPrototypeCatalog.Work Work { get; set; }
@@ -166,9 +169,11 @@ public static class Vehicles
         if (Registered.Any(v => v.Id.Equals(vehicle.Id, StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException($"A vehicle with id '{vehicle.Id}' is already registered.");
 
+        var caller = Assembly.GetCallingAssembly();
+        vehicle.ModName = ModNameOf(caller) ?? vehicle.Name;
         if (vehicle.Icon != null)
         {
-            var folder = Path.GetDirectoryName(Assembly.GetCallingAssembly().Location) ?? "";
+            var folder = Path.GetDirectoryName(caller.Location) ?? "";
             vehicle.IconPath = Path.IsPathRooted(vehicle.Icon) ? vehicle.Icon : Path.Combine(folder, vehicle.Icon);
         }
 
@@ -191,6 +196,27 @@ public static class Vehicles
         Log.Info($"Registered vehicle {vehicle} (base #{vehicle.BaseVehicle}, width {vehicle.CleaningWidth} m, hopper {vehicle.HopperKg} kg" +
                  (vehicle.Price.HasValue ? $", ${vehicle.Price:N0} in the garage)" : ")"));
         return vehicle;
+    }
+
+    /// <summary>The "name" in mod.json next to the assembly, else its [BepInPlugin] name.</summary>
+    private static string? ModNameOf(Assembly assembly)
+    {
+        try
+        {
+            var manifest = Path.Combine(Path.GetDirectoryName(assembly.Location) ?? "", "mod.json");
+            if (File.Exists(manifest))
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(manifest));
+                if (doc.RootElement.TryGetProperty("name", out var name) && !string.IsNullOrWhiteSpace(name.GetString()))
+                    return name.GetString();
+            }
+        }
+        catch (Exception e) { Log.Warning($"Reading mod.json for {assembly.GetName().Name} failed: {e.Message}"); }
+
+        Type?[] types;
+        try { types = assembly.GetTypes(); }
+        catch (ReflectionTypeLoadException e) { types = e.Types; }
+        return types.Select(t => t?.GetCustomAttribute<BepInEx.BepInPlugin>()?.Name).FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
     }
 
     /// <summary>The modded vehicle with this catalog index, or null for stock vehicles.</summary>

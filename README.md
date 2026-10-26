@@ -37,7 +37,7 @@ Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS*
 
 Modded vehicles are saved so that removing the mod never breaks a save: a bought Hex Harvester just disappears until the mod is back.
 
-**Multiplayer:** everyone in a crew needs the same vehicle mods. A host with mod vehicles shows up as e.g. version `1.0.4 + mods: Hex harvester`, and the game turns away players who don't have the same ones (with the mod list in its message). Players with matching mods join normally and use the host's garage prices. Joining an unmodded crew with mods works too; mod vehicles just aren't sold there.
+**Multiplayer:** everyone in a crew needs the same vehicle mods. A host with mod vehicles shows up as e.g. version `1.0.4 + mods: Hex Harvester`, and players without the same ones are turned away with a message saying which mods to add or turn off (players without MSML see the game's own "That crew plays version 1.0.4 + mods: Hex Harvester" message). Players with matching mods join normally and use the host's garage prices. Joining an unmodded crew with mods works too; mod vehicles just aren't sold there.
 
 ### Example mods
 

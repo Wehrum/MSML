@@ -66,6 +66,7 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `capsule-watch.cs` | Watches capsules, moving belts and processors stuck on "Could not pack a capsule" for a while. |
 | `join-sim.cs` | Saves the loaded moon, then packs and unpacks it the way a crew join does, to check that the save survives the trip. |
 | `join-host-sim.cs` | Runs the host's real join send (`SendWorld`) for a fake crewmate in an invite-only lobby, counting saves and messages. |
+| `crew-mismatch.cs` | Shows the message a player gets when joining a crew with different mods, for several pretend hosts. |
 | `crew-test.cs` | Multiplayer as far as one player can test it: a crewmate's harvester (lamps, silo), unknown vehicles skipped, and with `lobby` an invite-only crew to check what the join check sees. |
 | `silo-test.cs` | Renders the Hex Harvester's glass silo at several fill levels (own camera and light, works at night) and lists its upgrade prices. |
 

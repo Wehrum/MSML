@@ -25,6 +25,7 @@ internal static class VehiclePatches
         harmony.PatchAll(typeof(VehiclePatches));
         harmony.PatchAll(typeof(VehicleSaves));
         harmony.PatchAll(typeof(Crew));
+        Crew.JoinCheck.Apply();
     }
 
     private static ModVehicle? Modded(int index) => Vehicles.ByIndex(index);
