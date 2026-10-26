@@ -46,8 +46,8 @@ function Log([string]$msg, [string]$color = "Gray") {
 }
 
 # Runs git and returns its output; git writes progress to stderr, which mustn't abort under Windows PowerShell.
-function Git([string[]]$a) {
-    $out = & { $ErrorActionPreference = "Continue"; & git -C $RepoRoot @a 2>&1 }
+function Invoke-Git([string[]]$a) {
+    $out = & { $ErrorActionPreference = "Continue"; & git.exe -C $RepoRoot @a 2>&1 }
     if ($LASTEXITCODE -ne 0) { throw "git $($a -join ' ') failed: $($out -join ' ')" }
     return @($out | ForEach-Object { "$_" })
 }
@@ -87,16 +87,16 @@ if (Test-Path $LockFile) {
 }
 Set-Content $LockFile $PID
 try {
-    Git @("fetch", "-q", "origin", $Branch, "--tags") | Out-Null
-    $tags = Git @("tag", "--list", "v*") | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
+    Invoke-Git @("fetch", "-q", "origin", $Branch, "--tags") | Out-Null
+    $tags = Invoke-Git @("tag", "--list", "v*") | Where-Object { $_ -match '^v\d+\.\d+\.\d+$' } |
         Sort-Object { [version]$_.TrimStart('v') }
     $last = $tags | Select-Object -Last 1
     $range = if ($last) { "$last..origin/$Branch" } else { "origin/$Branch" }
-    $commits = Git (@("log", "--format=%H %s", $range, "--") + $Watched) | Where-Object { $_ }
+    $commits = Invoke-Git (@("log", "--format=%H %s", $range, "--") + $Watched) | Where-Object { $_ }
     if (-not $commits) { Log "No changes to release since $(if ($last) { $last } else { 'the start' })."; exit 0 }
 
     $v = if ($last) { [version]$last.TrimStart('v') } else { [version]"0.0.0" }
-    $messages = Git @("log", "--format=%B", $range)
+    $messages = Invoke-Git @("log", "--format=%B", $range)
     $next = if ($messages -match '\[major\]') { "$($v.Major + 1).0.0" }
             elseif ($messages -match '\[minor\]') { "$($v.Major).$($v.Minor + 1).0" }
             else { "$($v.Major).$($v.Minor).$($v.Build + 1)" }
@@ -105,10 +105,10 @@ try {
     if ($DryRun) { Log "Dry run: nothing published."; exit 0 }
 
     # Bring local main up to date (the release is built from it).
-    if ((Git @("status", "--porcelain")) | Where-Object { $_ }) { throw "Working tree has uncommitted changes; commit or stash them, then run tools\auto-release.ps1." }
-    $current = (Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
+    if ((Invoke-Git @("status", "--porcelain")) | Where-Object { $_ }) { throw "Working tree has uncommitted changes; commit or stash them, then run tools\auto-release.ps1." }
+    $current = (Invoke-Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
     if ($current -ne $Branch) { throw "Checked out branch is '$current', not '$Branch'. Switch to $Branch, then run tools\auto-release.ps1." }
-    Git @("merge", "-q", "--ff-only", "origin/$Branch") | Out-Null
+    Invoke-Git @("merge", "-q", "--ff-only", "origin/$Branch") | Out-Null
 
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "publish-release.ps1") -Version $next `
         -Notes "Changes since ${last}:`n$(($commits | ForEach-Object { '- ' + $_.Substring(41) }) -join "`n")" 2>&1
