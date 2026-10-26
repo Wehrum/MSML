@@ -67,7 +67,8 @@ Remove-Item -Recurse -Force $deploy, $ModsOut -ErrorAction SilentlyContinue
 $projects = @(Get-ChildItem (Join-Path $RepoRoot "examples") -Filter *.csproj -Recurse -ErrorAction SilentlyContinue)
 foreach ($proj in $projects) {
     Step "Building mod $($proj.BaseName)"
-    $buildArgs = @("build", $proj.FullName, "-c", "Release", "-nologo", "-v", "m", "-p:DeployToGame=true", "-p:GameDeployRoot=$deploy")
+    # No commit hash in the version, so the zips only change when the mod itself changes.
+    $buildArgs = @("build", $proj.FullName, "-c", "Release", "-nologo", "-v", "m", "-p:DeployToGame=true", "-p:GameDeployRoot=$deploy", "-p:IncludeSourceRevisionInInformationalVersion=false")
     if ($GameDir) { $buildArgs += "-p:GameDir=$GameDir" }
     & dotnet @buildArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $($proj.FullName)" }
