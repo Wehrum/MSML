@@ -75,6 +75,7 @@ public static class Views
         new("side", new V3(1, 0.08f, 0.0f), 22, Ortho: true),
         new("top", new V3(0.0f, 1, 0.001f), 22, Ortho: true),
         new("close-up", new V3(0.9f, 0.35f, 0.75f), 28, Zoom: 2.4f),
+        new("rear close-up", new V3(-0.55f, 0.3f, -1f), 28, Zoom: 2.4f),
         new("front", new V3(0.0f, 0.12f, 1), 22, Ortho: true),
     };
 }

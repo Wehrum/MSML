@@ -328,6 +328,31 @@ public sealed class Shapes
         return world;
     }
 
+    /// <summary>
+    /// Hazard stripes on a flat surface: slanted parallelograms of <paramref name="stripeMat"/>, raised slightly off
+    /// the surface and never overlapping each other, so nothing is coplanar (no z-fighting). The surface itself
+    /// supplies the other colour. <paramref name="faceRot"/> maps local +z to the surface's outward normal
+    /// (x along the strip, y up).
+    /// </summary>
+    public Shapes HazardStripes(string stripeMat, V3 faceCenter, M3 faceRot, float width, float height,
+        float stripeWidth = 0.15f, float gap = 0.15f, float slant = 0.15f, float raise = 0.012f)
+    {
+        var face = At(faceCenter, faceRot);
+        var hw = width / 2; var hh = height / 2;
+        for (var x0 = -hw; x0 + stripeWidth + slant <= hw + 1e-4f; x0 += stripeWidth + gap)
+        {
+            V3 C(float x, float y, float z) => new(x, y, z);
+            var bl = C(x0, -hh, 0); var br = C(x0 + stripeWidth, -hh, 0);
+            var tr = C(x0 + stripeWidth + slant, hh, 0); var tl = C(x0 + slant, hh, 0);
+            var up = new V3(0, 0, raise);
+            face.HexahedronLocal(stripeMat, bl, br, tr, tl, bl + up, br + up, tr + up, tl + up);
+        }
+        return this;
+    }
+
+    private void HexahedronLocal(string mat, V3 b0, V3 b1, V3 b2, V3 b3, V3 f0, V3 f1, V3 f2, V3 f3) =>
+        Hexahedron(mat, P(b0), P(b1), P(b2), P(b3), P(f0), P(f1), P(f2), P(f3));
+
     /// <summary>Ring of boxes around an axis (tyre treads, bristles, bolts).</summary>
     public Shapes Radial(string mat, V3 center, V3 axis, int count, float radius, V3 blockSize, float phaseDeg = 0)
     {

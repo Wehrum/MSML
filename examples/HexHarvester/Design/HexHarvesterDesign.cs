@@ -167,7 +167,7 @@ public sealed class HexHarvesterDesign : IModelDesign
         s.HexColumn(Dark, c, 1.62f, 0.25f);
         s.HexColumn(Shell, c + V3.Up * 0.25f, 1.52f, 2.2f);
         s.HexColumn(Orange, c + V3.Up * 1.25f, 1.56f, 0.32f);
-        s.HexColumn(Cyan, c + V3.Up * 0.55f, 1.535f, 0.08f);
+        s.HexColumn(Cyan, c + V3.Up * 0.55f, 1.56f, 0.08f);
         s.HexColumn(Dark, c + V3.Up * 2.45f, 1.6f, 0.45f, 30, 1.05f);
         s.HexColumn(Metal, c + V3.Up * 2.9f, 0.62f, 0.18f);
         s.HexColumn(Orange, c + V3.Up * 3.08f, 0.5f, 0.06f);
@@ -213,8 +213,7 @@ public sealed class HexHarvesterDesign : IModelDesign
         }
         // Bumper with hazard stripes and tail lights.
         s.Box(Dark, new V3(0, 1.05f, zb - 0.1f), new V3(3.0f, 0.36f, 0.25f));
-        for (var i = 0; i < 10; i++)
-            s.Box(i % 2 == 0 ? Hazard : Dark, new V3(-1.35f + i * 0.3f, 1.05f, zb - 0.235f), new V3(0.3f, 0.3f, 0.02f), M3.RotZ(30));
+        s.HazardStripes(Hazard, new V3(0, 1.05f, zb - 0.225f), M3.RotY(180), 2.8f, 0.3f);
         foreach (var x in new[] { -1.25f, 1.25f })
             s.Box(Red, new V3(x, 1.5f, zb - 0.05f), new V3(0.4f, 0.14f, 0.05f));
     }
@@ -274,9 +273,8 @@ public sealed class HexHarvesterDesign : IModelDesign
         foreach (var side in new[] { -1f, 1f })
         {
             var x = side * (HeadWidth / 2 + 0.3f);
-            s.Box(Orange, new V3(x, 1.1f, HeadZ - 0.2f), new V3(0.14f, 1.9f, 1.6f));
-            for (var k = 0; k < 4; k++)
-                s.Box(k % 2 == 0 ? Hazard : Dark, new V3(x + side * 0.075f, 0.45f + k * 0.42f, HeadZ - 0.2f), new V3(0.01f, 0.42f, 1.55f), M3.RotX(0));
+            s.Box(Dark, new V3(x, 1.1f, HeadZ - 0.2f), new V3(0.14f, 1.9f, 1.6f));
+            s.HazardStripes(Hazard, new V3(x + side * 0.07f, 1.1f, HeadZ - 0.2f), M3.RotY(side * 90), 1.5f, 1.8f, 0.2f, 0.2f, 0.3f);
             s.Cylinder(Rubber, new V3(x - side * 0.1f, 0.28f, HeadZ - 0.9f), new V3(x + side * 0.1f, 0.28f, HeadZ - 0.9f), 0.28f, 18);
             s.Cylinder(Metal, new V3(x - side * 0.12f, 0.28f, HeadZ - 0.9f), new V3(x + side * 0.12f, 0.28f, HeadZ - 0.9f), 0.12f, 12);
             s.Sphere(Cyan, new V3(x, 2.15f, HeadZ - 0.2f), 0.13f);
