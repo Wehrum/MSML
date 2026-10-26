@@ -41,8 +41,8 @@ function Native([string]$exe, [string[]]$a) {
 $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
 if (-not $gh) { $gh = "C:\Program Files\GitHub CLI\gh.exe" }
 if (-not (Test-Path $gh)) { throw "GitHub CLI not found. Install it with: winget install GitHub.cli, then run: gh auth login" }
-& $gh auth status *> $null
-if ($LASTEXITCODE -ne 0) { throw "Not logged in to GitHub. Run: gh auth login" }
+$authed = & { $ErrorActionPreference = "Continue"; & $gh auth status 2>$null | Out-Null; $LASTEXITCODE -eq 0 }
+if (-not $authed) { throw "Not logged in to GitHub. Run: gh auth login" }
 
 Push-Location $RepoRoot
 try {
@@ -64,13 +64,14 @@ try {
     if (git diff --cached --name-only) { Native git @("commit", "-q", "-m", "Release ${tag}: record tested game build") }
     Native git @("tag", "-a", $tag, "-m", "MSML $tag")
 
-    & $gh repo view $Repo --json name *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $exists = & { $ErrorActionPreference = "Continue"; & $gh repo view $Repo --json name 2>$null | Out-Null; $LASTEXITCODE -eq 0 }
+    if (-not $exists) {
         Step "Creating https://github.com/$Repo"
         Native $gh @("repo", "create", $Repo, "--public", "--description", "MSML - Moon Sweepers Mod Loader: BepInEx-based mod loader with an in-game Mods menu",
             "--source", ".", "--remote", "origin", "--push")
     }
-    if (-not (git remote get-url origin 2>$null)) { Native git @("remote", "add", "origin", "https://github.com/$Repo.git") }
+    $hasOrigin = & { $ErrorActionPreference = "Continue"; git remote get-url origin 2>$null | Out-Null; $LASTEXITCODE -eq 0 }
+    if (-not $hasOrigin) { Native git @("remote", "add", "origin", "https://github.com/$Repo.git") }
     $branch = (git rev-parse --abbrev-ref HEAD).Trim()
     Native git @("push", "-u", "origin", $branch)
     Native git @("push", "origin", $tag)
