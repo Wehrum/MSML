@@ -52,6 +52,14 @@ function Invoke-Git([string[]]$a) {
     return @($out | ForEach-Object { "$_" })
 }
 
+# Clean tree on main, fast-forwarded to origin/main (releases are built from it).
+function Assert-ReadyOnMain {
+    if ((Invoke-Git @("status", "--porcelain")) | Where-Object { $_ }) { throw "Working tree has uncommitted changes; commit or stash them, then run tools\auto-release.ps1." }
+    $current = @(Invoke-Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
+    if ($current -ne $Branch) { throw "Checked out branch is '$current', not '$Branch'. Switch to $Branch, then run tools\auto-release.ps1." }
+    Invoke-Git @("merge", "-q", "--ff-only", "origin/$Branch") | Out-Null
+}
+
 # ---- install / remove triggers ----------------------------------------------------------------------
 if ($Install -or $Schedule) {
     $hook = @"
@@ -93,7 +101,26 @@ try {
     $last = $tags | Select-Object -Last 1
     $range = if ($last) { "$last..origin/$Branch" } else { "origin/$Branch" }
     $commits = Invoke-Git (@("log", "--format=%H %s", $range, "--") + $Watched) | Where-Object { $_ }
-    if (-not $commits) { Log "No changes to release since $(if ($last) { $last } else { 'the start' })."; exit 0 }
+    if (-not $commits) {
+        # No loader changes. Mods (examples/) changed since mods\ was last updated? Refresh the downloadable zips only.
+        $lastMods = @(Invoke-Git @("log", "-1", "--format=%H", "origin/$Branch", "--", "mods"))[0]
+        $modRange = if ($lastMods) { "$lastMods..origin/$Branch" } else { "origin/$Branch" }
+        $modCommits = Invoke-Git @("log", "--format=%H %s", $modRange, "--", "examples") | Where-Object { $_ }
+        if (-not $modCommits) { Log "No changes to release since $(if ($last) { $last } else { 'the start' })."; exit 0 }
+        Log "$(@($modCommits).Count) mod change(s); updating mods\ (no loader release)." Cyan
+        if ($DryRun) { Log "Dry run: nothing published."; exit 0 }
+        Assert-ReadyOnMain
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build-mods.ps1") -Sync 2>&1
+        $out | ForEach-Object { Add-Content $LogFile "    $_" }
+        if ($LASTEXITCODE -ne 0) { throw "build-mods.ps1 failed; see $LogFile." }
+        Invoke-Git @("add", "mods") | Out-Null
+        if (Invoke-Git @("diff", "--cached", "--name-only") | Where-Object { $_ }) {
+            Invoke-Git @("commit", "-q", "-m", "Update downloadable mods") | Out-Null
+            Invoke-Git @("push", "-q", "origin", $Branch) | Out-Null
+            Log "Pushed updated mods: https://github.com/Wehrum/MSML/tree/$Branch/mods" Green
+        } else { Log "Mod zips unchanged." }
+        exit 0
+    }
 
     $v = if ($last) { [version]$last.TrimStart('v') } else { [version]"0.0.0" }
     $messages = Invoke-Git @("log", "--format=%B", $range)
@@ -104,11 +131,8 @@ try {
     $commits | Select-Object -First 15 | ForEach-Object { Log "  $($_.Substring(0, [Math]::Min(100, $_.Length)))" }
     if ($DryRun) { Log "Dry run: nothing published."; exit 0 }
 
-    # Bring local main up to date (the release is built from it).
-    if ((Invoke-Git @("status", "--porcelain")) | Where-Object { $_ }) { throw "Working tree has uncommitted changes; commit or stash them, then run tools\auto-release.ps1." }
-    $current = @(Invoke-Git @("rev-parse", "--abbrev-ref", "HEAD"))[0]
-    if ($current -ne $Branch) { throw "Checked out branch is '$current', not '$Branch'. Switch to $Branch, then run tools\auto-release.ps1." }
-    Invoke-Git @("merge", "-q", "--ff-only", "origin/$Branch") | Out-Null
+    Assert-ReadyOnMain
+
 
     $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "publish-release.ps1") -Version $next `
         -Notes "Changes since ${last}:`n$(($commits | ForEach-Object { '- ' + $_.Substring(41) }) -join "`n")" 2>&1

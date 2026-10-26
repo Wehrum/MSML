@@ -158,24 +158,12 @@ $zip = Join-Path $Artifacts "$packName.zip"
 Step "Creating $zip"
 New-Zip $stage $zip $packName
 
-# 4. Example mods as drop-in zips ---------------------------------------------------------------
-$modsOut = Join-Path $Artifacts "mods"
-Remove-Item -Recurse -Force $modsOut -ErrorAction SilentlyContinue
-$examples = @(Get-ChildItem (Join-Path $RepoRoot "examples") -Filter *.csproj -Recurse -ErrorAction SilentlyContinue)
-foreach ($proj in $examples) {
-    Step "Building example mod $($proj.BaseName)"
-    Build-Project $proj.FullName $deploy
-}
-$modZips = @()
-foreach ($dir in Get-ChildItem (Join-Path $deploy "Mods") -Directory -ErrorAction SilentlyContinue) {
-    $manifest = Join-Path $dir.FullName "mod.json"
-    $ver = if (Test-Path $manifest) { (Get-Content $manifest -Raw | ConvertFrom-Json).version } else { "" }
-    if (-not $ver) { $ver = (Get-ChildItem $dir.FullName -Filter *.dll | Select-Object -First 1).VersionInfo.ProductVersion -replace '\+.*$', '' }
-    $modZip = Join-Path $modsOut "$($dir.Name)-$ver.zip"
-    New-Zip $dir.FullName $modZip $dir.Name
-    $modZips += $modZip
-}
+# 4. Example mods as drop-in zips (artifacts\mods); publish-release syncs them into the repo's mods\ folder ------
 Remove-Item -Recurse -Force $deploy
+$modArgs = @{}
+if ($GameDir) { $modArgs.GameDir = $GameDir }
+& (Join-Path $PSScriptRoot "build-mods.ps1") @modArgs
+$modZips = @(Get-ChildItem (Join-Path $Artifacts "mods") -Filter *.zip -ErrorAction SilentlyContinue | ForEach-Object FullName)
 
 # 5. GitHub release folder: get.ps1 (the one-liner), the installer, helper scripts, release.json with checksums.
 #    Mods are not part of MSML releases; their zips stay in artifacts\mods for authors to share.

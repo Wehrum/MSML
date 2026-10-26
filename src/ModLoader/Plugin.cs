@@ -38,6 +38,7 @@ public class ModLoaderBehaviour : MonoBehaviour
         try
         {
             ModActions.PollFilePicker();
+            Disclaimer.Tick(ModsScreen.Menu, ModsScreen.MenuSeenAt);
             if (ModsScreen.IsOpen && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && !ModsScreen.DialogOpen)
                 ModsScreen.Close();
         }

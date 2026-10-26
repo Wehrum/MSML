@@ -61,9 +61,13 @@ try {
     $info = Get-Content (Join-Path $release "release.json") -Raw | ConvertFrom-Json
 
     # 2. Commit compatibility record, tag, push ----------------------------------------------------
+    Step "Updating downloadable mods (mods\)"
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build-mods.ps1") -Sync
+    if ($LASTEXITCODE -ne 0) { throw "Building mods failed." }
+
     Step "Recording compatibility and tagging $tag"
-    Native git @("add", "compatibility.json")
-    if (git diff --cached --name-only) { Native git @("commit", "-q", "-m", "Release ${tag}: record tested game build") }
+    Native git @("add", "compatibility.json", "mods")
+    if (git diff --cached --name-only) { Native git @("commit", "-q", "-m", "Release ${tag}: record tested game build, update mods") }
     Native git @("tag", "-a", $tag, "-m", "MSML $tag")
 
     $exists = & { $ErrorActionPreference = "Continue"; & $gh repo view $Repo --json name 2>$null | Out-Null; $LASTEXITCODE -eq 0 }

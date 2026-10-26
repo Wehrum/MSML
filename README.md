@@ -13,14 +13,31 @@ Close Moon Sweepers, open PowerShell, and paste:
 irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 ```
 
+> [!WARNING]
+> MSML and its mods are unofficial, experimental and only lightly tested. They aren't made or supported by the developers of Moon Sweepers. They could crash the game, corrupt your saves or your moon, or stop working after a game update. **Back up your saves** (`%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers`) before using them. You use MSML and any mods at your own risk; we aren't responsible for lost or damaged saves. The game shows this notice the first time you launch it with MSML.
+
 ### Adding mods
 
-MSML doesn't include any mods. To add one:
-- Download the mod's `.zip` 
+MSML doesn't include any mods. Ready-made ones are in [`mods/`](mods). To add one:
+- Download the mod's `.zip` (from [`mods/`](mods) or anywhere else)
 - In the main menu choose `MODS > ADD MOD`
 - Select the mod
 
 Or you can extract it into `<game>\Mods\`. Restart the game to load it.
+
+### Example mods
+
+| Mod | What it shows |
+|---|---|
+| [`HelloWorld`](examples/HelloWorld) | The minimal mod: a plugin, a custom `MonoBehaviour`, and a Harmony hook |
+| [`DebugMenu`](examples/DebugMenu) | A uGUI panel in the pause menu: unlimited money, +$10k/+$1M, unlimited suit energy, fly mode, empty/fill the hopper, and spawn any catalog vehicle (including mod-added ones). It only reports a spawn as successful once the vehicle is visible and on the ground |
+| [`HexHarvester`](examples/HexHarvester) | A brand-new vehicle. It's added as a new entry in the game's vehicle catalog and runs on the game's own vehicle code (driving, cleaning, hopper, unloading, lights, audio). It has an original ModelKit model and a 25 m (one hex) cleaning head. It isn't sold in the garage yet, so spawn it from the Debug Menu |
+
+How the Hex Harvester plugs into the game, as a pattern for future vehicles:
+
+- **Catalog entry:** a new `MoonPrototypeCatalog.Item` is appended to `MoonPrototypeCatalog.Vehicles`, so it gets its own index.
+- **Base vehicle:** per-index lookups (`AuthoredPrefab`, `StorageKg`, `Heft`, `MoonVehicleAudio.Voice`) are patched to reuse a stock vehicle for physics anchors and sounds.
+- **Model:** `MoonPrototypeModels.Vehicle` is patched so the stock model's renderers are hidden and the ModelKit model is attached in their place. Wheels go on the game's animated wheel transforms, and brushes become `view.rollers`.
 
 ### Creating a mod
 
@@ -49,20 +66,6 @@ Mods\YourMod\
 ```
 
 Without `mod.json`, the name and version come from the `[BepInPlugin]` attribute.
-
-### Example mods
-
-| Mod | What it shows |
-|---|---|
-| [`HelloWorld`](examples/HelloWorld) | The minimal mod: a plugin, a custom `MonoBehaviour`, and a Harmony hook |
-| [`DebugMenu`](examples/DebugMenu) | A uGUI panel in the pause menu: unlimited money, +$10k/+$1M, unlimited suit energy, fly mode, empty/fill the hopper, and spawn any catalog vehicle (including mod-added ones). It only reports a spawn as successful once the vehicle is visible and on the ground |
-| [`HexHarvester`](examples/HexHarvester) | A brand-new vehicle. It's added as a new entry in the game's vehicle catalog and runs on the game's own vehicle code (driving, cleaning, hopper, unloading, lights, audio). It has an original ModelKit model and a 25 m (one hex) cleaning head. It isn't sold in the garage yet, so spawn it from the Debug Menu |
-
-How the Hex Harvester plugs into the game, as a pattern for future vehicles:
-
-- **Catalog entry:** a new `MoonPrototypeCatalog.Item` is appended to `MoonPrototypeCatalog.Vehicles`, so it gets its own index.
-- **Base vehicle:** per-index lookups (`AuthoredPrefab`, `StorageKg`, `Heft`, `MoonVehicleAudio.Voice`) are patched to reuse a stock vehicle for physics anchors and sounds.
-- **Model:** `MoonPrototypeModels.Vehicle` is patched so the stock model's renderers are hidden and the ModelKit model is attached in their place. Wheels go on the game's animated wheel transforms, and brushes become `view.rollers`.
 
 ### Making models
 

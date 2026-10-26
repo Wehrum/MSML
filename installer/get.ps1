@@ -98,6 +98,9 @@ try {
     Say "Installed:  $(if ($installed) { "MSML $installed" } else { 'not installed' })"
     Say "Latest:     MSML $($release.version)"
     if ($installed -and -not $sameGame) { Say "            Moon Sweepers was updated since MSML was installed." Yellow }
+    Write-Host ""
+    Say "MSML and its mods are unofficial and experimental. They could crash the game or corrupt your" Yellow
+    Say "saves or moon. Back up your saves first. You use them at your own risk." Yellow
 
     # 3. What to do -------------------------------------------------------------------------------------
     if (-not $Action) {

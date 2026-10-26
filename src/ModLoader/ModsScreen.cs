@@ -59,10 +59,15 @@ internal static class ModsScreen
     public static bool IsOpen { get; private set; }
     public static bool DialogOpen => _menu != null && _menu.dialog != null && _menu.dialog.Open;
 
+    /// <summary>The live main menu (null outside it) and when it appeared, for the startup disclaimer.</summary>
+    public static MoonMainMenu? Menu => _menu;
+    public static float MenuSeenAt { get; private set; }
+
     // ---- main menu entry -------------------------------------------------------------------------
 
     public static void AddMenuEntry(MoonMainMenu menu)
     {
+        if (_menu == null || _menu.Pointer != menu.Pointer) MenuSeenAt = Time.unscaledTime;
         _menu = menu;
         var rows = menu.homeRows;
         if (rows == null || rows.Length == 0) return;
@@ -120,6 +125,11 @@ internal static class ModsScreen
     public static void Open()
     {
         if (_menu == null || IsOpen || _menu.current != MoonMainMenu.Panel.None || DialogOpen) return;
+        if (!Disclaimer.Accepted)
+        {
+            Disclaimer.Show(_menu.dialog, Open);
+            return;
+        }
         if (VersionCheck.Mismatch && !_mismatchAccepted)
         {
             // Once per session: warn before opening the Mods screen.
