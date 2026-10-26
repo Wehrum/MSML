@@ -14,7 +14,7 @@ irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 ```
 
 > [!WARNING]
-> MSML and its mods are unofficial, experimental and only lightly tested. They aren't made or supported by the developers of Moon Sweepers. They could crash the game, corrupt your saves or your moon, or stop working after a game update. **Back up your saves** (`%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers`) before using them. You use MSML and any mods at your own risk; we aren't responsible for lost or damaged saves. The game shows this notice the first time you launch it with MSML.
+> MSML and its mods are unofficial, experimental and only lightly tested. They aren't made or supported by the developers of Moon Sweepers. They could crash the game, corrupt your saves or your moon, or stop working after a game update. **Back up your saves** (`%USERPROFILE%\AppData\LocalLow\DragDropGames\MoonSweepers`) before using them. You use MSML and any mods at your own risk; we aren't responsible for lost or damaged saves.
 
 ### Adding mods
 
