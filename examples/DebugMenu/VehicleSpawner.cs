@@ -42,6 +42,10 @@ public static class VehicleSpawner
 
         var vehicle = root.GetComponentInChildren<MoonPrototypeVehicle>(true);
         if (vehicle == null) vehicle = root.AddComponent<MoonPrototypeVehicle>();
+        // Link the vehicle and its authored view (the garage code does this); without it nothing animates:
+        // wheels, rollers, hose suction, gauges.
+        var view = model != null ? model.GetComponent<MoonAuthoredVehicleView>() : null;
+        if (view != null) { vehicle.authored = view; view.vehicle = vehicle; }
         var storage = $"debug-{index}-{Guid.NewGuid():N}";
         world.RegisterVehicleStorage(storage, MoonPrototypeCatalog.StorageKg(index));
         vehicle.Initialize(eq, index, storage);

@@ -39,6 +39,22 @@ public class Plugin : BasePlugin
         AddComponent<Harness>();
         new Harmony("moonsweepmods.devharness").PatchAll(typeof(MenuHook));
         new Harmony("moonsweepmods.devharness.devtools").PatchAll(typeof(DevToolsPatch));
+        new Harmony("moonsweepmods.devharness.drive").PatchAll(typeof(DrivePatch));
+    }
+}
+
+[HarmonyPatch(typeof(MoonPrototypeVehicle), nameof(MoonPrototypeVehicle.DriverControls))]
+internal static class DrivePatch
+{
+    internal static float Throttle, Steer, Until;
+
+    [HarmonyPostfix]
+    private static void Postfix(MoonPrototypeVehicle __instance)
+    {
+        if (Time.unscaledTime > Until) return;
+        __instance.throttle = Throttle;
+        __instance.steer = Steer;
+        __instance.brake = false;
     }
 }
 
@@ -167,6 +183,15 @@ public class Harness : MonoBehaviour
                 if (button == null) return "no Button found";
                 button.onClick.Invoke();
                 return "clicked " + button.name;
+            }
+            case "drive":
+            {
+                // drive <throttle> <steer> <seconds> [clean]: overrides the driven vehicle's input (keyboard injection doesn't reach the game)
+                var a = rest.Split(' ');
+                DrivePatch.Throttle = float.Parse(a[0], CultureInfo.InvariantCulture);
+                DrivePatch.Steer = float.Parse(a[1], CultureInfo.InvariantCulture);
+                DrivePatch.Until = Time.unscaledTime + float.Parse(a[2], CultureInfo.InvariantCulture);
+                return "driving";
             }
             case "devtools":
                 DevToolsPatch.On = rest != "off";

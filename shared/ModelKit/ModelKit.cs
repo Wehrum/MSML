@@ -125,6 +125,8 @@ public sealed class Model
     public readonly Dictionary<string, Rgba> Palette = new();
     public readonly Dictionary<string, V3> Points = new();   // named anchors (driver seat, head, ...)
     public readonly Dictionary<string, float> Values = new(); // named numbers (wheel radius, cleaning width, ...)
+    /// <summary>Hoses the game animates (suction pulses): group name -> centreline in the group's space, and 0..1 bulge envelope.</summary>
+    public readonly Dictionary<string, (List<V3> Path, List<float> Envelope)> Hoses = new();
 
     public Model(string name) { Name = name; }
 
@@ -258,6 +260,72 @@ public sealed class Shapes
             m.SmoothQuad(c + D(a) * radius, c + D(d) * radius, c + D(cc) * radius, c + D(b) * radius, D(a), D(d), D(cc), D(b));
         }
         return this;
+    }
+
+    /// <summary>
+    /// Smooth tube through <paramref name="controls"/> (Catmull-Rom), sampled every <paramref name="spacing"/> metres.
+    /// Returns the sampled centreline in the group's space (usable as a game hose path).
+    /// </summary>
+    public List<V3> Tube(string mat, IList<V3> controls, float radius, int sides = 16, float spacing = 0.04f, bool caps = true)
+    {
+        var dense = new List<V3>();
+        for (var i = 0; i < controls.Count - 1; i++)
+        {
+            var p0 = controls[Math.Max(0, i - 1)]; var p1 = controls[i]; var p2 = controls[i + 1]; var p3 = controls[Math.Min(controls.Count - 1, i + 2)];
+            for (var k = 0; k < 40; k++)
+            {
+                var t = k / 40f; var t2 = t * t; var t3 = t2 * t;
+                dense.Add((p1 * 2 + (p2 - p0) * t + (p0 * 2 - p1 * 5 + p2 * 4 - p3) * t2 + (p1 * 3 - p0 - p2 * 3 + p3) * t3) * 0.5f);
+            }
+        }
+        dense.Add(controls[controls.Count - 1]);
+
+        // Resample at equal arc length.
+        var pts = new List<V3> { dense[0] };
+        var carry = 0f;
+        for (var i = 1; i < dense.Count; i++)
+        {
+            var a = dense[i - 1]; var b = dense[i];
+            var seg = (b - a).Length;
+            var pos = spacing - carry;
+            while (pos <= seg) { pts.Add(V3.Lerp(a, b, pos / seg)); pos += spacing; }
+            carry = seg - (pos - spacing);
+        }
+        if ((pts[^1] - dense[^1]).Length > spacing * 0.3f) pts.Add(dense[^1]);
+        var world = pts.ConvertAll(P);
+
+        // Rings with parallel-transport frames.
+        var m = _group.Mesh(mat);
+        var tangent = (world[1] - world[0]).Normalized;
+        var normal = M3.AlongY(tangent).Ax;
+        V3[]? prev = null, prevN = null;
+        for (var i = 0; i < world.Count; i++)
+        {
+            var t = (world[Math.Min(i + 1, world.Count - 1)] - world[Math.Max(i - 1, 0)]).Normalized;
+            normal = (normal - t * V3.Dot(normal, t)).Normalized;
+            var binormal = V3.Cross(t, normal);
+            var ring = new V3[sides]; var rn = new V3[sides];
+            for (var s = 0; s < sides; s++)
+            {
+                var ang = s * 2 * MathF.PI / sides;
+                rn[s] = normal * MathF.Cos(ang) + binormal * MathF.Sin(ang);
+                ring[s] = world[i] + rn[s] * radius;
+            }
+            if (prev != null)
+                for (var s = 0; s < sides; s++)
+                {
+                    var j = (s + 1) % sides;
+                    m.SmoothQuad(prev[s], prev[j], ring[j], ring[s], prevN![s], prevN[j], rn[j], rn[s]);
+                }
+            if (caps && (i == 0 || i == world.Count - 1))
+                for (var s = 1; s < sides - 1; s++)
+                {
+                    if (i == 0) m.Tri(ring[0], ring[s + 1], ring[s]);
+                    else m.Tri(ring[0], ring[s], ring[s + 1]);
+                }
+            prev = ring; prevN = rn;
+        }
+        return world;
     }
 
     /// <summary>Ring of boxes around an axis (tyre treads, bristles, bolts).</summary>

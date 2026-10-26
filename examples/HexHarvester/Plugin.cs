@@ -38,6 +38,7 @@ public class Plugin : BasePlugin
         Logger = Log;
         Register();
         new Harmony(Guid).PatchAll(typeof(CatalogPatches));
+        AddComponent<HarvesterRuntime>();
     }
 
     private static void Register()
@@ -113,6 +114,24 @@ internal static class CatalogPatches
     [HarmonyPrefix]
     private static void Voice(ref int vehicleIndex) { if (Ours(vehicleIndex)) vehicleIndex = Plugin.BaseIndex; }
 
+    // The engine/drive mix looks up per-vehicle levels by catalog index in native code and silently gets 0 for a new
+    // index. While the audio updates, present the harvester as its base vehicle.
+    [HarmonyPatch(typeof(MoonVehicleAudio), nameof(MoonVehicleAudio.LateUpdate))]
+    [HarmonyPrefix]
+    private static void AudioBefore(MoonVehicleAudio __instance, out bool __state)
+    {
+        var v = __instance.vehicle;
+        __state = v != null && Ours(v._Index_k__BackingField);
+        if (__state) v!._Index_k__BackingField = Plugin.BaseIndex;
+    }
+
+    [HarmonyPatch(typeof(MoonVehicleAudio), nameof(MoonVehicleAudio.LateUpdate))]
+    [HarmonyPostfix]
+    private static void AudioAfter(MoonVehicleAudio __instance, bool __state)
+    {
+        if (__state && __instance.vehicle != null) __instance.vehicle._Index_k__BackingField = Plugin.Index;
+    }
+
     // Make sure the hopper and model data are right even if the game inlined a lookup we patched.
     [HarmonyPatch(typeof(MoonPrototypeVehicle), nameof(MoonPrototypeVehicle.Initialize))]
     [HarmonyPostfix]
@@ -121,6 +140,11 @@ internal static class CatalogPatches
         if (!Ours(index)) return;
         try
         {
+            if (__instance.authored == null)
+            {
+                var view = __instance.GetComponentInChildren<MoonAuthoredVehicleView>(true);
+                if (view != null) { __instance.authored = view; view.vehicle = __instance; Plugin.Logger.LogInfo("Linked Hex Harvester to its model view."); }
+            }
             var world = __instance.World;
             if (world != null && world.VehicleDustCapacity(storageId) < Plugin.HopperKg) world.RaiseVehicleCapacity(storageId, Plugin.HopperKg);
             Plugin.Logger.LogInfo($"Hex Harvester ready: storage {storageId}, cleaning width {__instance.CleaningWidth} m, " +

@@ -81,7 +81,22 @@ internal static class HarvesterModel
         view.cleaningOffset = design.Values["headZ"] / scale;
         view.wheelRadius = design.Values["wheelRadius"];
 
+        // Hoses: the game pulses these meshes along their paths while sucking, and plays the hose sound.
+        var hoses = new List<MoonAuthoredVehicleView.Hose>();
+        foreach (var (groupName, (path, envelope)) in design.Hoses)
+        {
+            if (!made.TryGetValue(groupName, out var part)) continue;
+            var hose = new MoonAuthoredVehicleView.Hose { part = part };
+            var p = new Il2CppStructArray<Vector3>(path.Count);
+            var e = new Il2CppStructArray<float>(path.Count);
+            for (var i = 0; i < path.Count; i++) { p[i] = UnityModelBuilder.ToUnity(path[i]); e[i] = envelope[i]; }
+            hose.path = p;
+            hose.envelope = e;
+            hoses.Add(hose);
+        }
+        view.hoses = new Il2CppReferenceArray<MoonAuthoredVehicleView.Hose>(hoses.ToArray());
+
         Plugin.Logger.LogInfo($"Built Hex Harvester model: hid {hidden} rover renderers, {made.Count} parts, " +
-            $"{rollers.Count} brush rollers, cleaning width {view.cleaningWidth} m, offset {view.cleaningOffset}.");
+            $"{rollers.Count} brush rollers, {hoses.Count} hoses, cleaning width {view.cleaningWidth} m, offset {view.cleaningOffset}.");
     }
 }

@@ -55,6 +55,7 @@ public class DebugPanel : MonoBehaviour
     private TMP_Text? _moneyToggle;
     private TMP_Text? _energyToggle;
     private TMP_Text? _flyToggle;
+    private TMP_Text? _clock;
     private RectTransform? _list;
     private int _listCount = -1;
     private float _statusUntil;
@@ -74,6 +75,8 @@ public class DebugPanel : MonoBehaviour
             Cheats.Tick();
             VehicleSpawner.Tick();
             if (VehicleSpawner.TakeStatus() is { } spawned) Show(spawned);
+            Clock.Tick();
+            if (Clock.TakeStatus() is { } clock) Show(clock);
 
             var show = _visible && Game.Equipment != null && PauseOpen();
             if (show && (_canvas == null || _canvas.WasCollected || !_canvas)) Build();
@@ -141,6 +144,24 @@ public class DebugPanel : MonoBehaviour
         Button(panel, "Fill hopper", Pad + half + 8, y, half, RowH, () => Cheats.SetVehicleDust(true));
         y += RowH + 18;
 
+        Text(panel, "CLOCK", Pad, y, inner, 26, 17, true, Cream, TextAlignmentOptions.MidlineLeft);
+        _clock = Text(panel, "", Pad, y, inner, 26, 16, false, Faint, TextAlignmentOptions.MidlineRight);
+        y += 30;
+        var quarter = (inner - 24) / 4;
+        var presets = new[] { ("Dawn", "dawn"), ("Noon", "noon"), ("Dusk", "dusk"), ("Night", "midnight") };
+        for (var i = 0; i < presets.Length; i++)
+        {
+            var preset = presets[i].Item2;
+            Button(panel, presets[i].Item1, Pad + i * (quarter + 8), y, quarter, RowH - 6, () => Clock.Preset(preset));
+        }
+        y += RowH + 2;
+        var speeds = new[] { ("-1 h", (Func<string>)(() => Clock.Nudge(-1))), ("+1 h", () => Clock.Nudge(1)), ("Pause", () => Clock.Speed(0)), ("x1", () => Clock.Speed(1)) };
+        for (var i = 0; i < speeds.Length; i++) Button(panel, speeds[i].Item1, Pad + i * (quarter + 8), y, quarter, RowH - 6, speeds[i].Item2);
+        y += RowH + 2;
+        Button(panel, "x10", Pad, y, quarter, RowH - 6, () => Clock.Speed(10));
+        Button(panel, "x60", Pad + quarter + 8, y, quarter, RowH - 6, () => Clock.Speed(60));
+        y += RowH + 12;
+
         Text(panel, "SPAWN VEHICLE", Pad, y, inner, 26, 17, true, Cream, TextAlignmentOptions.MidlineLeft);
         y += 30;
         var statusH = 54f;
@@ -161,6 +182,7 @@ public class DebugPanel : MonoBehaviour
         if (_moneyToggle != null) _moneyToggle.text = $"Unlimited money   {OnOff(Cheats.UnlimitedMoney)}";
         if (_energyToggle != null) _energyToggle.text = $"Unlimited suit energy   {OnOff(Cheats.UnlimitedEnergy)}";
         if (_flyToggle != null) _flyToggle.text = $"Fly mode   {OnOff(Cheats.Flying)}";
+        if (_clock != null) _clock.text = Clock.Describe();
         if (_status != null && Time.unscaledTime >= _statusUntil) _status.text = "";
 
         var vehicles = MoonPrototypeCatalog.Vehicles;

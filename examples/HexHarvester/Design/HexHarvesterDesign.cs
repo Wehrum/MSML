@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MoonSweepMods.ModelKit;
 
 namespace MoonSweepMods.HexHarvester;
@@ -57,7 +58,7 @@ public sealed class HexHarvesterDesign : IModelDesign
         Rear(body);
         PushFrame(body);
         HeadFrame(body);
-        Ducting(body);
+        Ducting(m, body);
 
         for (var axle = 0; axle < 3; axle++)
         foreach (var side in new[] { 1, -1 })
@@ -287,9 +288,13 @@ public sealed class HexHarvesterDesign : IModelDesign
         s.Prism(Cyan, new V3(0, (TopChordY + BottomChordY) / 2, ChordZ + 0.2f), new V3(0, (TopChordY + BottomChordY) / 2, ChordZ + 0.24f), 0.4f, 6, false, 30);
     }
 
-    private static void Ducting(Shapes s)
+    private const string DuctGroup = "Intake duct";
+    private static readonly V3 SiloInlet = new(0, 4.81f, -1.75f);
+    private const float DuctRadius = 0.27f;
+
+    private static void Ducting(Model m, Shapes s)
     {
-        // Collector manifold along the truss, and a riser up over the cab into the silo.
+        // Collector manifold along the truss, with a riser from each brush pod.
         var my = TopChordY + 0.35f;
         var mz = ChordZ - 0.05f;
         s.Cylinder(Shell, new V3(-HeadWidth / 2 + 1.0f, my, mz), new V3(HeadWidth / 2 - 1.0f, my, mz), 0.2f, 16);
@@ -299,24 +304,63 @@ public sealed class HexHarvesterDesign : IModelDesign
             s.Cylinder(Dark, new V3(x, BrushRadius * 2 + 0.45f, HeadZ - 0.25f), new V3(x, my, mz), 0.13f, 12);
             s.Cylinder(Orange, new V3(x - 0.24f, my, mz), new V3(x + 0.24f, my, mz), 0.24f, 16);
         }
-        var p0 = new V3(0, my, mz);
-        var p1 = new V3(0, 4.35f, 4.5f);
-        var p2 = new V3(0, 5.0f, 2.2f);
-        var p3 = new V3(0, 4.95f, -1.0f);
-        s.Cylinder(Dark, p0, p1, 0.26f, 16);
-        s.Cylinder(Dark, p1, p2, 0.26f, 16);
-        s.Cylinder(Dark, p2, p3, 0.26f, 16);
-        foreach (var p in new[] { p1, p2 }) s.Sphere(Metal, p, 0.3f, 6, 12);
-        foreach (var t in new[] { 0.3f, 0.6f })
+        // Junction box where the main duct leaves the manifold.
+        s.Box(Dark, new V3(0, my + 0.05f, mz), new V3(0.9f, 0.62f, 0.62f));
+
+        // Main intake duct: one continuous tube from the junction, up over the cab and down into the silo's top.
+        // The game animates it as a hose (suction pulses travelling to the silo), so it's its own group.
+        var duct = new Shapes(m.Group(DuctGroup, V3.Zero));
+        var controls = new List<V3>
         {
-            s.Cylinder(Orange, V3.Lerp(p0, p1, t) - (p1 - p0).Normalized * 0.06f, V3.Lerp(p0, p1, t) + (p1 - p0).Normalized * 0.06f, 0.3f, 16);
-            s.Cylinder(Orange, V3.Lerp(p2, p3, t) - (p3 - p2).Normalized * 0.06f, V3.Lerp(p2, p3, t) + (p3 - p2).Normalized * 0.06f, 0.3f, 16);
+            new(0, my + 0.3f, mz),
+            new(0, 3.3f, 5.55f),
+            new(0, 4.45f, 4.75f),
+            new(0, 5.05f, 3.2f),
+            new(0, 5.15f, 1.0f),
+            new(0, 5.35f, -0.9f),
+            new(0, 5.35f, -1.6f),
+            new(0, 5.15f, -1.75f),
+            SiloInlet,
+        };
+        var path = duct.Tube(Dark, controls, DuctRadius, 18, 0.04f);
+
+        // Clamps (static) at fixed fractions; the hose can't bulge under them.
+        var clampAt = new[] { 0.16f, 0.38f, 0.58f, 0.78f };
+        var envelope = new List<float>();
+        for (var i = 0; i < path.Count; i++)
+        {
+            var f = i / (float)(path.Count - 1);
+            var e = 1f;
+            e = MathF.Min(e, Ramp(i, 8));                    // fixed at the junction
+            e = MathF.Min(e, Ramp(path.Count - 1 - i, 8));   // fixed at the silo collar
+            foreach (var c in clampAt) e = MathF.Min(e, Ramp(MathF.Abs(f - c) * (path.Count - 1), 5));
+            envelope.Add(e);
         }
-        // Struts holding the riser over the cab.
-        s.Rod(Steel, new V3(0, 3.95f, 2.2f), p2, 0.05f);
-        s.Rod(Steel, new V3(0, 4.1f, 3.6f), V3.Lerp(p1, p2, 0.4f), 0.05f);
+        m.Hoses[DuctGroup] = (path, envelope);
+        foreach (var c in clampAt)
+        {
+            var i = (int)(c * (path.Count - 1));
+            var dir = (path[Math.Min(i + 1, path.Count - 1)] - path[Math.Max(i - 1, 0)]).Normalized;
+            s.Cylinder(Orange, path[i] - dir * 0.07f, path[i] + dir * 0.07f, DuctRadius + 0.06f, 18);
+        }
+
+        // Collars at both ends.
+        s.Cylinder(Metal, SiloInlet - V3.Up * 0.02f, SiloInlet + V3.Up * 0.2f, DuctRadius + 0.08f, 18);
+        s.Cylinder(Orange, SiloInlet + V3.Up * 0.2f, SiloInlet + V3.Up * 0.26f, DuctRadius + 0.05f, 18);
+
+        // Struts holding the duct over the cab, from the cab roof spine and the silo cap.
+        s.Rod(Steel, new V3(0.45f, 3.98f, 3.6f), path[(int)(path.Count * 0.33f)] + new V3(0.2f, -0.2f, 0), 0.05f);
+        s.Rod(Steel, new V3(-0.45f, 3.98f, 2.1f), path[(int)(path.Count * 0.5f)] + new V3(-0.2f, -0.2f, 0), 0.05f);
+        s.Rod(Steel, new V3(0.9f, 4.5f, -1.0f), path[(int)(path.Count * 0.72f)] + new V3(0.2f, -0.15f, 0), 0.05f);
+        s.Rod(Steel, new V3(-0.9f, 4.5f, -1.0f), path[(int)(path.Count * 0.72f)] + new V3(-0.2f, -0.15f, 0), 0.05f);
     }
 
+    /// <summary>0 at distance 0, rising smoothly to 1 at <paramref name="width"/> samples.</summary>
+    private static float Ramp(float distance, float width)
+    {
+        var t = Math.Clamp(distance / width, 0, 1);
+        return t * t * (3 - 2 * t);
+    }
     // ---- moving parts -----------------------------------------------------------------------------------
 
     private static void Wheel(Shapes s, int side)
