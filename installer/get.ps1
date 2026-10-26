@@ -165,6 +165,7 @@ try {
     Write-Host ""
     Say "Done! Launch Moon Sweepers from Steam." Green
     Say "To add a mod: download its .zip, then in the main menu choose MODS > ADD MOD (or extract it into $GameDir\Mods)."
+    Say "Official mods (like MoonSweeper+): https://github.com/Wehrum/MSML/tree/main/mods"
     Say "To update or uninstall later, run the same command again."
 } catch {
     Write-Host ""

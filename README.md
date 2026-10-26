@@ -25,6 +25,14 @@ MSML doesn't include any mods. Ready-made ones are in [`mods/`](mods). To add on
 
 Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
+### Official mods
+
+| Mod | Description | |
+|---|---|---|
+| **MoonSweeper+** | Quality-of-life fixes, each with its own setting. So far: the vehicle camera stays where you point it instead of snapping back behind the vehicle (auto recenter can be turned back on, with your own delay). | [`mods/`](mods) |
+
+Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS**) and, for mods that support it, in the pause menu under **MOD SETTINGS**.
+
 ### Example mods
 
 | Mod | Version | Description | |
@@ -60,6 +68,29 @@ Mods\YourMod\
 ```
 
 Without `mod.json`, the name and version come from the `[BepInPlugin]` attribute.
+
+### Mod settings (MSML API)
+
+Declare settings the normal BepInEx way. Every loaded mod's settings show up in the MODS screen (select the mod, then SETTINGS) with no extra code: OFF / ON for `bool`, - / + for numbers (bounded by an `AcceptableValueRange`), and a choice per option for enums and `AcceptableValueList`. Changes save to the mod's `.cfg` straight away and raise `SettingChanged`.
+
+To use the API, add `<UseMsmlApi>true</UseMsmlApi>` to the `.csproj`. `MSML.Api.dll` ships with the loader, so it's never copied into your mod. With it you can:
+
+```csharp
+using MSML;
+
+public override void Load()
+{
+    _delay = Config.Bind("Camera", "RecenterDelay", 5f, new ConfigDescription(
+        "Seconds before the camera swings back.",
+        new AcceptableValueRange<float>(1.2f, 30f),
+        ModSettings.Step(0.5)));                   // - / + change it by 0.5
+    Config.Bind("Debug", "Internal", 0, new ConfigDescription("Not for players.", null, ModSettings.Hidden));
+
+    ModSettings.ShowInGame(this);                  // also list them in the pause menu (MOD SETTINGS)
+}
+```
+
+Only use `ShowInGame` for settings that take effect immediately. [`official/MoonSweeperPlus`](official/MoonSweeperPlus) is a complete example.
 
 ### Making models
 

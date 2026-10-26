@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using BepInEx.Configuration;
 using BepInEx.Unity.IL2CPP;
 using Il2CppInterop.Runtime;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
@@ -55,6 +56,10 @@ internal static class ModsScreen
     private static string? _selected;
     private static string? _lastClickKey;
     private static float _lastClickTime;
+
+    // Settings page: shown instead of the two columns and details while _settingsKey is set.
+    private static string? _settingsKey;
+    private static RectTransform? _settingsContent;
 
     public static bool IsOpen { get; private set; }
     public static bool DialogOpen => _menu != null && _menu.dialog != null && _menu.dialog.Open;
@@ -161,6 +166,7 @@ internal static class ModsScreen
     {
         if (!IsOpen || _menu == null) return;
         IsOpen = false;
+        _settingsKey = null;
         if (Alive(_root)) _root!.gameObject.SetActive(false);
         _menu.home.gameObject.SetActive(true);
         SetLinksVisible(true);
@@ -168,6 +174,26 @@ internal static class ModsScreen
         if (_menu.stage != null) _menu.stage._PanelOpen_k__BackingField = false;
         UpdateEntryDetail();
         _menu.LayoutHome();
+    }
+
+    /// <summary>BACK / Esc: leaves a mod's settings page, or closes the screen.</summary>
+    public static void Back()
+    {
+        if (!IsOpen) return;
+        if (_settingsKey != null)
+        {
+            _settingsKey = null;
+            Refresh();
+            return;
+        }
+        Close();
+    }
+
+    private static void OpenSettings(string key)
+    {
+        _settingsKey = key;
+        _selected = key;
+        Refresh();
     }
 
     /// <summary>The Discord / Steam review buttons sit over the right of the screen; the game hides them on its panels too.</summary>
@@ -200,6 +226,21 @@ internal static class ModsScreen
             keys.Add(location[prefix.Length..].Split(Path.DirectorySeparatorChar)[0]);
         }
         return keys;
+    }
+
+    /// <summary>The settings (BepInEx config) of each plugin a mod loaded this session.</summary>
+    private static List<(string title, ConfigFile config)> SettingsOf(string key)
+    {
+        var pages = new List<(string, ConfigFile)>();
+        var folder = Path.GetFullPath(Path.Combine(ModPaths.ActiveDir, key)) + Path.DirectorySeparatorChar;
+        foreach (var plugin in IL2CPPChainloader.Instance.Plugins.Values)
+        {
+            var location = plugin.Location == null ? "" : Path.GetFullPath(plugin.Location);
+            if (!location.StartsWith(folder, StringComparison.OrdinalIgnoreCase)) continue;
+            if (plugin.Instance is BasePlugin { Config: { } config } && SettingsView.Visible(config).Count > 0)
+                pages.Add((plugin.Metadata.Name, config));
+        }
+        return pages;
     }
 
     private static ModInfo? Find(string key) => _mods.FirstOrDefault(m => m.Key.Equals(key, StringComparison.OrdinalIgnoreCase));
@@ -252,9 +293,11 @@ internal static class ModsScreen
         _disabledContent = MakeList("Disabled mods", Left);
         _enabledContent = MakeList("Enabled mods", Col2X);
         _details = kit.Rect(_root, "Details", DetX, HeaderY, DetW, ListBottom - HeaderY);
+        _settingsContent = SettingsView.NewScrollArea(kit, _root, Left, HeaderY, DetX + DetW - Left, ListBottom - HeaderY);
+        _settingsContent.parent.gameObject.SetActive(false);
 
         _footer.Clear();
-        _footer.Add(kit.NewChip(_root, "BACK", Left, FootY, 46, 18, Act(Close), null, "Esc", false));
+        _footer.Add(kit.NewChip(_root, "BACK", Left, FootY, 46, 18, Act(Back), null, "Esc", false));
         _footer.Add(kit.NewChip(_root, "ADD MOD", Left, FootY, 46, 18, Act(AddMod), null, null, false));
         _footer.Add(kit.NewChip(_root, "OPEN MODS FOLDER", Left, FootY, 46, 18, Act(ModActions.OpenModsFolder), null, null, false));
         _restartChip = kit.NewChip(_root, "RESTART TO APPLY", 0, FootY, 46, 18, Act(ConfirmRestart), null, null, true);
@@ -299,10 +342,37 @@ internal static class ModsScreen
         return content;
     }
 
+    /// <summary>Switches between the mod lists (with details and footer actions) and a mod's settings page.</summary>
+    private static void SetListsVisible(bool lists)
+    {
+        foreach (var go in new[]
+                 {
+                     _disabledHeader!.gameObject, _enabledHeader!.gameObject, _disabledContent!.parent.gameObject,
+                     _enabledContent!.parent.gameObject, _details!.gameObject, _version!.gameObject,
+                 })
+            go.SetActive(lists);
+        for (var i = 1; i < _footer.Count; i++) _footer[i].rect.gameObject.SetActive(lists);
+        _settingsContent!.parent.gameObject.SetActive(!lists);
+    }
+
     private static void Refresh()
     {
         if (_menu == null || !Alive(_root)) return;
         var kit = _menu.kit;
+
+        var settingsMod = _settingsKey == null ? null : Find(_settingsKey);
+        if (_settingsKey != null && settingsMod == null) _settingsKey = null;
+        SetListsVisible(_settingsKey == null);
+        if (settingsMod != null)
+        {
+            _status!.text = $"{settingsMod.Name} settings. Changes are saved right away.";
+            _status.color = MoonSimpleKit.Faint;
+            _restartChip!.rect.gameObject.SetActive(false);
+            SettingsView.Fill(kit, _settingsContent!, SettingsOf(settingsMod.Key), headings: SettingsOf(settingsMod.Key).Count > 1,
+                "This mod has no settings, or it isn't running. Enable it and restart the game to change its settings.");
+            return;
+        }
+
         var disabled = _mods.Where(m => !IsEnabled(m.Key)).ToList();
         var enabled = _enabled.Select(Find).Where(m => m != null).Select(m => m!).ToList();
 
@@ -334,6 +404,7 @@ internal static class ModsScreen
             var selected = key.Equals(_selected, StringComparison.OrdinalIgnoreCase);
             var row = kit.Rect(content, key, 8, y, width, RowH);
             var fill = MoonSimpleKit.Sprite9(row, "Fill", MoonSimpleKit.Rounded(false), selected ? MoonSimpleKit.PillFill : MoonSimpleKit.ChipFill);
+            fill.raycastTarget = true; // the game's sprites are decorative (no raycasts); the whole row must take clicks
             if (selected) kit.Line(row, 0, 10, 4, RowH - 20, MoonSimpleKit.Orange);
 
             var nameText = kit.Text(row, mod.Name, 18, 0, width - 18 - 96, RowH, 21, selected ? MoonSimpleKit.Cream : MoonSimpleKit.Soft, false, TextAlignmentOptions.MidlineLeft);
@@ -435,9 +506,19 @@ internal static class ModsScreen
         Wrap(desc);
 
         var key = mod.Key;
-        if (mod.Dlls.Count == 0 && !IsEnabled(key)) return;
-        var toggle = kit.NewChip(_details, IsEnabled(key) ? "DISABLE" : "ENABLE", 0, toggleY, 52, 20, Act(() => Toggle(key)), null, null, !IsEnabled(key));
-        MoonSimpleKit.Size(toggle);
+        var x = 0f;
+        if (mod.Dlls.Count > 0 || IsEnabled(key))
+        {
+            var toggle = kit.NewChip(_details, IsEnabled(key) ? "DISABLE" : "ENABLE", 0, toggleY, 52, 20, Act(() => Toggle(key)), null, null, !IsEnabled(key));
+            MoonSimpleKit.Size(toggle);
+            x += toggle.rect.sizeDelta.x + 14;
+        }
+        if (SettingsOf(key).Count > 0)
+        {
+            var settings = kit.NewChip(_details, "SETTINGS", x, toggleY, 52, 20, Act(() => OpenSettings(key)), null, null, false);
+            MoonSimpleKit.Size(settings);
+            MoonSimpleKit.Place(settings.rect, x, toggleY, settings.rect.sizeDelta.x, 52);
+        }
     }
 
     private static (string, Color) StatusOf(ModInfo mod)

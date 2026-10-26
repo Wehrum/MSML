@@ -23,6 +23,7 @@ public class Plugin : BasePlugin
         Logger = Log;
         AddComponent<ModLoaderBehaviour>();
         new Harmony(Guid).PatchAll(typeof(MenuHooks));
+        new Harmony(Guid + ".pause").PatchAll(typeof(PauseSettings.Hooks));
         VersionCheck.Start();
         Log.LogInfo($"Mod Loader {Version}: mods folder is {ModPaths.ModsDir}");
     }
@@ -40,7 +41,8 @@ public class ModLoaderBehaviour : MonoBehaviour
             ModActions.PollFilePicker();
             Disclaimer.Tick(ModsScreen.Menu, ModsScreen.MenuSeenAt);
             if (ModsScreen.IsOpen && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && !ModsScreen.DialogOpen)
-                ModsScreen.Close();
+                ModsScreen.Back();
+            PauseSettings.Tick();
         }
         catch (Exception e)
         {
@@ -69,7 +71,7 @@ internal static class MenuHooks
     private static bool BeforeBack()
     {
         if (!ModsScreen.IsOpen) return true;
-        if (!ModsScreen.DialogOpen) ModsScreen.Close();
+        if (!ModsScreen.DialogOpen) ModsScreen.Back();
         return false;
     }
 

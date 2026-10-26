@@ -40,6 +40,12 @@
     <Reference Include="$(BepInExDir)\interop\*.dll" Exclude="$(BepInExDir)\interop\netstandard.dll" Private="false" />
   </ItemGroup>
 
+  <!-- Set <UseMsmlApi>true</UseMsmlApi> in a .csproj to use the MSML API (src\Api). MSML.Api.dll ships with the
+       loader, so it's referenced but never copied into the mod. -->
+  <ItemGroup Condition="'$(UseMsmlApi)' == 'true'">
+    <ProjectReference Include="$(MSBuildThisFileDirectory)src\Api\MSML.Api.csproj" Private="false" />
+  </ItemGroup>
+
   <Target Name="CheckGameSetup" BeforeTargets="ResolveAssemblyReferences" Condition="'$(IsModProject)' == 'true'">
     <Error Condition="!Exists('$(BepInExDir)\interop\Assembly-CSharp.dll')"
            Text="Interop assemblies not found in '$(BepInExDir)\interop'. Run tools\setup-modding.ps1 first (see README.md)." />

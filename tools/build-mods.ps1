@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds every mod under examples\ into a drop-in zip (artifacts\mods), and with -Sync copies them into the repo's
+    Builds every mod under official\ and examples\ into a drop-in zip (artifacts\mods), and with -Sync copies them into the repo's
     mods\ folder (with a generated mods\README.md) so players can download them from GitHub.
 
 .DESCRIPTION
@@ -64,7 +64,7 @@ function Get-ZipDigest([string]$ZipPath) {
 # 1. Build ------------------------------------------------------------------------------------------
 $deploy = Join-Path $Artifacts "deploy-mods"
 Remove-Item -Recurse -Force $deploy, $ModsOut -ErrorAction SilentlyContinue
-$projects = @(Get-ChildItem (Join-Path $RepoRoot "examples") -Filter *.csproj -Recurse -ErrorAction SilentlyContinue)
+$projects = @(foreach ($dir in "official", "examples") { Get-ChildItem (Join-Path $RepoRoot $dir) -Filter *.csproj -Recurse -ErrorAction SilentlyContinue })
 foreach ($proj in $projects) {
     Step "Building mod $($proj.BaseName)"
     # No commit hash in the version, so the zips only change when the mod itself changes.

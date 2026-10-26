@@ -9,9 +9,9 @@
     ADD MOD in-game, or by extracting them into the Mods folder.
 
     1. Builds/reuses the tools payload (tools\build-tools.ps1).
-    2. Builds the mod loader (src\ModLoader + src\ModLoader.Patcher) into the payload.
+    2. Builds the mod loader (src\ModLoader + src\ModLoader.Patcher, and the MSML API in src\Api) into the payload.
     3. Adds the install scripts (installer\scripts) and third-party notices, and zips it. get.ps1 (the one-liner) runs it.
-    4. Builds every project under examples\ and zips each one as a drop-in mod.
+    4. Builds every project under official\ and examples\ and zips each one as a drop-in mod.
 
     Players don't need .NET, git, or this repo. Game-derived files (interop/dummy assemblies, Unity libraries) are
     never included. The installer generates them on the player's machine.
@@ -89,6 +89,7 @@ Copy-Item -Recurse $toolsPayload $payload
 
 Step "Building the mod loader"
 Build-Project (Join-Path $RepoRoot "src\ModLoader.Patcher\ModLoader.Patcher.csproj") $deploy
+Build-Project (Join-Path $RepoRoot "src\Api\MSML.Api.csproj") $deploy
 Build-Project (Join-Path $RepoRoot "src\ModLoader\ModLoader.csproj") $deploy
 Copy-Item -Recurse (Join-Path $deploy "BepInEx\plugins") (Join-Path $payload "plugins")
 Copy-Item -Recurse (Join-Path $deploy "BepInEx\patchers") (Join-Path $payload "patchers")

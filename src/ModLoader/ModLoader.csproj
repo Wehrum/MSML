@@ -6,6 +6,7 @@
     <AssemblyName>MoonSweepMods.ModLoader</AssemblyName>
     <RootNamespace>MoonSweepMods.ModLoader</RootNamespace>
     <Version>0.2.0</Version>
+    <UseMsmlApi>true</UseMsmlApi>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\ModLoader.Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />

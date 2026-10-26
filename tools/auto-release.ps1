@@ -102,10 +102,10 @@ try {
     $range = if ($last) { "$last..origin/$Branch" } else { "origin/$Branch" }
     $commits = Invoke-Git (@("log", "--format=%H %s", $range, "--") + $Watched) | Where-Object { $_ }
     if (-not $commits) {
-        # No loader changes. Mods (examples/) changed since mods\ was last updated? Refresh the downloadable zips only.
+        # No loader changes. Mods (official/, examples/) changed since mods\ was last updated? Refresh the downloadable zips only.
         $lastMods = @(Invoke-Git @("log", "-1", "--format=%H", "origin/$Branch", "--", "mods"))[0]
         $modRange = if ($lastMods) { "$lastMods..origin/$Branch" } else { "origin/$Branch" }
-        $modCommits = Invoke-Git @("log", "--format=%H %s", $modRange, "--", "examples") | Where-Object { $_ }
+        $modCommits = Invoke-Git @("log", "--format=%H %s", $modRange, "--", "official", "examples") | Where-Object { $_ }
         if (-not $modCommits) { Log "No changes to release since $(if ($last) { $last } else { 'the start' })."; exit 0 }
         Log "$(@($modCommits).Count) mod change(s); updating mods\ (no loader release)." Cyan
         if ($DryRun) { Log "Dry run: nothing published."; exit 0 }

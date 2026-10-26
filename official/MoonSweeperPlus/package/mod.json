@@ -1,0 +1,7 @@
+{
+  "id": "msml.moonsweeperplus",
+  "name": "MoonSweeper+",
+  "version": "0.1.0",
+  "author": "MSML",
+  "description": "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay."
+}

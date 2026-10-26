@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- MSML.Api.dll: the public modding API. Ships with the loader (BepInEx\plugins\MSML.Api); mods reference it. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <ModKind>LoaderPlugin</ModKind>
+    <AssemblyName>MSML.Api</AssemblyName>
+    <RootNamespace>MSML</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

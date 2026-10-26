@@ -26,6 +26,7 @@ namespace MoonSweepMods.DevHarness;
 ///   get &lt;expr&gt;                    print a value
 ///   call &lt;expr&gt;.Method [args]     invoke a method (args: numbers, true/false, enum names, "strings")
 ///   click &lt;expr&gt;                  invoke the first Button.onClick under an object
+///   rayclick &lt;expr&gt;               click like the mouse: UI raycast at the object's centre (catches blocked clicks)
 ///   quit
 /// </summary>
 [BepInPlugin("moonsweepmods.devharness", "Dev Harness", "0.1.0")]
@@ -183,6 +184,23 @@ public class Harness : MonoBehaviour
                 if (button == null) return "no Button found";
                 button.onClick.Invoke();
                 return "clicked " + button.name;
+            }
+            case "rayclick":
+            {
+                // Like a real mouse click: UI raycast at the object's centre, then the nearest Button above the top hit.
+                var rt = TransformOf(Resolve(rest)).Cast<RectTransform>();
+                var canvas = rt.GetComponentInParent<Canvas>().rootCanvas;
+                var cam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+                var screen = RectTransformUtility.WorldToScreenPoint(cam, rt.TransformPoint(rt.rect.center));
+                var ped = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current) { position = screen };
+                var hits = new Il2CppSystem.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+                UnityEngine.EventSystems.EventSystem.current.RaycastAll(ped, hits);
+                if (hits.Count == 0) return $"nothing hit at {screen}";
+                var top = hits[0].gameObject;
+                var button = top.GetComponentInParent<Button>();
+                if (button == null) return $"top hit {top.name} has no Button";
+                button.onClick.Invoke();
+                return $"hit {top.name}, clicked {button.name}";
             }
             case "drive":
             {
