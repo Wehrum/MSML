@@ -4,24 +4,23 @@
 
 ## Install, update or uninstall
 
+> [!CAUTION]
+> DO NOT TRUST RANDOM SCRIPTS ON THE INTERNET! While I know there is nothing nefarious here, you DON'T! Please do your due diligence and review any scripts before running them on your machine.
+
 Close Moon Sweepers, open PowerShell, and paste:
 
 ```powershell
 irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 ```
 
-That's the only command you need. It shows what's installed and asks what to do: **Install**, or **Update /
-Reinstall / Uninstall** if MSML is already installed. Run it again after a Moon Sweepers update to refresh MSML.
-Your mods and settings are kept, including on uninstall (your `Mods` folder stays).
-
 ### Adding mods
 
-MSML doesn't include any mods. To add one, download the mod's `.zip`, then in the main menu choose **MODS > ADD MOD**
-and pick it, or extract it into `<game>\Mods\`. Restart the game to load it (**RESTART TO APPLY**).
+MSML doesn't include any mods. To add one:
+- Download the mod's `.zip` 
+- In the main menu choose `MODS > ADD MOD`
+- Select the mod
 
-MSML adds a **MODS** entry to the game's main menu, with a screen where players add, enable and disable mods,
-RimWorld-style. Mods are separate downloads that players drop into `<game>\Mods`, or add in-game with **ADD MOD**.
-This repo holds the loader, the installer pipeline, and example mods to build from.
+Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
 ### Creating a mod
 
