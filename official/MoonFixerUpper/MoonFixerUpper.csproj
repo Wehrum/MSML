@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- MoonFixerUpper: fixes for bugs in the game itself. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <UseMsmlApi>true</UseMsmlApi>
+    <AssemblyName>MSML.MoonFixerUpper</AssemblyName>
+    <RootNamespace>MSML.MoonFixerUpper</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

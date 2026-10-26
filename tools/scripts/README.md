@@ -62,6 +62,10 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `drive-outside.cs` | Spawns a vehicle next to the parked push sweeper and drives it, logging speed. |
 | `render-icon.cs` | Renders a vehicle's in-game model to a transparent 512x512 garage picture. |
 | `harvester-shots.cs` | Close-up renders of the Hex Harvester (front, side, rear, cab, nose) and checks for wheel height, body sway and lamp positions. |
+| `capsule-jam.cs` | Where conveyor capsules are stuck: follows every loaded belt to its end and reports what it feeds and how full it is. |
+| `capsule-watch.cs` | Watches capsules, moving belts and processors stuck on "Could not pack a capsule" for a while. |
+| `join-sim.cs` | Saves the loaded moon, then packs and unpacks it the way a crew join does, to check that the save survives the trip. |
+| `join-host-sim.cs` | Runs the host's real join send (`SendWorld`) for a fake crewmate in an invite-only lobby, counting saves and messages. |
 | `crew-test.cs` | Multiplayer as far as one player can test it: a crewmate's harvester (lamps, silo), unknown vehicles skipped, and with `lobby` an invite-only crew to check what the join check sees. |
 | `silo-test.cs` | Renders the Hex Harvester's glass silo at several fill levels (own camera and light, works at night) and lists its upgrade prices. |
 

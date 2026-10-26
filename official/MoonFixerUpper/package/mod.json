@@ -1,0 +1,7 @@
+{
+  "id": "msml.moonfixerupper",
+  "name": "MoonFixerUpper",
+  "version": "0.1.0",
+  "author": "MSML",
+  "description": "Fixes for bugs in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\n\"Could not pack a capsule\": a moon can hold at most 10,000 capsules, counting every capsule on a belt. Big belt networks reach that, and then every stone press and pressure chamber stops, all belts back up, and the factory stays frozen for good. With the fix, processors can still pack their product at the limit (they only turn capsules they've taken in into new ones), so the belts start moving again. Works on existing saves; only the host needs it in multiplayer."
+}

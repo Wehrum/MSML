@@ -31,6 +31,7 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 |---|---|---|
 | **MoonSweeper+** | Quality-of-life fixes, each with its own setting. So far: the vehicle camera stays where you point it instead of snapping back behind the vehicle (auto recenter can be turned back on, with your own delay). | [`mods/`](mods) |
 | **Hex Harvester** | A new vehicle, sold in the garage for $100,000: a six-wheeled harvester with a 25 m sweeper head that clears a whole hex in one pass, and a glass silo (9,000 kg) that visibly fills with dust. Its price and upgrade prices are adjustable in SETTINGS. It's delivered in front of the garage, since it doesn't fit in the hall. | [`mods/`](mods) |
+| **MoonFixerUpper** | Fixes for bugs in the game itself. So far: "Could not pack a capsule", where reaching the moon's 10,000-capsule limit (capsules on belts count) freezes every stone press and pressure chamber and backs up all belts for good. Works on existing saves; only the host needs it. | [`mods/`](mods) |
 
 Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS**) and, for mods that support it, in the pause menu under **MOD SETTINGS**.
 
