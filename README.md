@@ -34,7 +34,9 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
 Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS**) and, for mods that support it, in the pause menu under **MOD SETTINGS**.
 
-Modded vehicles are saved so that removing the mod never breaks a save: a bought Hex Harvester just disappears until the mod is back. In multiplayer, everyone in the crew needs the same vehicle mods.
+Modded vehicles are saved so that removing the mod never breaks a save: a bought Hex Harvester just disappears until the mod is back.
+
+**Multiplayer:** everyone in a crew needs the same vehicle mods. A host with mod vehicles shows up as e.g. version `1.0.4 + mods: Hex harvester`, and the game turns away players who don't have the same ones (with the mod list in its message). Players with matching mods join normally and use the host's garage prices. Joining an unmodded crew with mods works too; mod vehicles just aren't sold there.
 
 ### Example mods
 
@@ -110,7 +112,7 @@ Vehicles.Register(new ModVehicle("yourmod.bigsweeper", "Big sweeper", MoonProtot
 });
 ```
 
-Bought modded vehicles are saved by id in records the unmodded game ignores, so saves never break when a mod is removed. Also available: `Heft`, `Speed`, `Turn`, `Cargo`, `UpgradePriceScale` (the garage's upgrade prices are each upgrade's base price times this; the Mega Vacuum Rover's is 3) and `UpgradePrices` (exact prices per upgrade and level), `Ready` (called when one is set up in the world), `Update` (called every frame, e.g. to show the hopper level), `HideDriver` (for closed cabs) and `DeliverOutsideGarage` (for vehicles too big for the garage hall). Price, summary and upgrade prices can be changed while the game runs. [`official/HexHarvester`](official/HexHarvester) is a complete example, and [`tools/scripts/render-icon.cs`](tools/scripts/render-icon.cs) renders a garage picture from the in-game model.
+Bought modded vehicles are saved by id in records the unmodded game ignores, so saves never break when a mod is removed. Also available: `Heft`, `Speed`, `Turn`, `Cargo`, `UpgradePriceScale` (the garage's upgrade prices are each upgrade's base price times this; the Mega Vacuum Rover's is 3) and `UpgradePrices` (exact prices per upgrade and level), `Ready` (called when one is set up in the world), `Update` (called every frame, e.g. to show the hopper level), `HideDriver` (for closed cabs) and `DeliverOutsideGarage` (for vehicles too big for the garage hall). Price, summary and upgrade prices can be changed while the game runs. In multiplayer the API handles the rest: it advertises your vehicles in the crew lobby so only players with the same vehicle mods can join, uses the host's prices on crewmates' garages, skips vehicles a player doesn't have instead of crashing, and runs `RemoteUpdate` (and `HideDriver`) for crewmates' copies of your vehicle. [`official/HexHarvester`](official/HexHarvester) is a complete example, and [`tools/scripts/render-icon.cs`](tools/scripts/render-icon.cs) renders a garage picture from the in-game model.
 
 ### Testing without restarting
 

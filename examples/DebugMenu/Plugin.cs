@@ -19,7 +19,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "moonsweepmods.debugmenu";
     public const string Name = "Debug Menu";
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
 
     internal static ManualLogSource Logger = null!;
 
@@ -72,6 +72,13 @@ public class DebugPanel : MonoBehaviour
     {
         try
         {
+            // In someone else's crew the host owns the money, clock and vehicles, so the Debug Menu is host-only.
+            if (Crewmate())
+            {
+                if (_canvas != null && !_canvas.WasCollected && _canvas && _canvas.activeSelf) _canvas.SetActive(false);
+                return;
+            }
+
             if (Keyboard.current != null && Keyboard.current.f7Key.wasPressedThisFrame) _visible = !_visible;
             Cheats.Tick();
             VehicleSpawner.Tick();
@@ -87,6 +94,23 @@ public class DebugPanel : MonoBehaviour
             if (show && Time.unscaledTime >= _nextRefresh) Refresh();
         }
         catch (Exception e) { Plugin.Logger.LogError(e); }
+    }
+
+    private bool _wasCrewmate;
+
+    /// <summary>True while in a crew someone else hosts. Turns the cheats off once on joining.</summary>
+    private bool Crewmate()
+    {
+        var crewmate = MoonSteamLobby.InLobby && !MoonSteamLobby.IsHost;
+        if (crewmate && !_wasCrewmate)
+        {
+            Cheats.UnlimitedMoney = false;
+            Cheats.UnlimitedEnergy = false;
+            if (Cheats.Flying && Game.Equipment != null) Cheats.SetFlying(false);
+            Plugin.Logger.LogInfo("In someone else's crew: the Debug Menu is off (host only).");
+        }
+        _wasCrewmate = crewmate;
+        return crewmate;
     }
 
     private bool PauseOpen()

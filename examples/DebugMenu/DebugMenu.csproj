@@ -3,6 +3,6 @@
     <IsModProject>true</IsModProject>
     <AssemblyName>MoonSweepMods.DebugMenu</AssemblyName>
     <RootNamespace>MoonSweepMods.DebugMenu</RootNamespace>
-    <Version>0.2.0</Version>
+    <Version>0.3.0</Version>
   </PropertyGroup>
 </Project>

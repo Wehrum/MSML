@@ -62,12 +62,15 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `drive-outside.cs` | Spawns a vehicle next to the parked push sweeper and drives it, logging speed. |
 | `render-icon.cs` | Renders a vehicle's in-game model to a transparent 512x512 garage picture. |
 | `harvester-shots.cs` | Close-up renders of the Hex Harvester (front, side, rear, cab, nose) and checks for wheel height, body sway and lamp positions. |
+| `crew-test.cs` | Multiplayer as far as one player can test it: a crewmate's harvester (lamps, silo), unknown vehicles skipped, and with `lobby` an invite-only crew to check what the join check sees. |
 | `silo-test.cs` | Renders the Hex Harvester's glass silo at several fill levels (own camera and light, works at night) and lists its upgrade prices. |
 
 ## Known limits
 
-- Patching `MoonPrototypeCatalog.Heft` mid-game crashes the runtime (patching it at startup, as mods do, is fine).
-  Other methods tested so far patch and unpatch cleanly.
+- Occasionally the first script after a launch crashes the game's .NET runtime when it spawns or patches things.
+  The harness runs a harmless warm-up script a few seconds after startup, which avoids most of it; if a script
+  crashes right after a relaunch, run it again (or run `-Code "1+1"` first). Runtime Harmony patches, including on
+  methods mods already patch, work otherwise.
 - Injected Unity classes (`ClassInjector`, custom `MonoBehaviour`s) can't be redefined once registered; use
   `ctx.OnUpdate` instead.
 - Changing the DevHarness itself still needs a restart (`tools\dev-relaunch.ps1`).

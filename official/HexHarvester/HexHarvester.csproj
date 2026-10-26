@@ -5,7 +5,7 @@
     <UseMsmlApi>true</UseMsmlApi>
     <AssemblyName>MSML.HexHarvester</AssemblyName>
     <RootNamespace>MSML.HexHarvester</RootNamespace>
-    <Version>0.4.1</Version>
+    <Version>0.5.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <!-- Engine-independent model code, shared with tools\ModelPreview so previews match the game exactly. -->

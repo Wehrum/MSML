@@ -38,7 +38,11 @@ internal static class Cheats
     {
         var eq = Game.Equipment ?? throw new InvalidOperationException("Not in a game.");
         var vehicle = eq.Vehicle ?? throw new InvalidOperationException("Get in a vehicle first.");
-        eq.World.DevSetVehicleDust(vehicle.StorageId, full ? vehicle.DustCapacityKg : 0);
+        // World.DevSetVehicleDust only works with the game's developer tools on, so set the hopper directly.
+        // (ContainsKey + indexer: TryGetValue's out parameter on a game dictionary crashes the runtime.)
+        var hoppers = eq.World.vehicleStorage;
+        if (vehicle.StorageId == null || !hoppers.ContainsKey(vehicle.StorageId)) return "This vehicle has no hopper.";
+        hoppers[vehicle.StorageId].kilograms = full ? vehicle.DustCapacityKg : 0;
         return full ? "Hopper filled" : "Hopper emptied";
     }
 

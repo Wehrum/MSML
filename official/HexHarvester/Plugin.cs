@@ -16,7 +16,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.hexharvester";
     public const string Name = "Hex Harvester";
-    public const string Version = "0.4.1";
+    public const string Version = "0.5.0";
 
     internal static ManualLogSource Logger = null!;
 
@@ -50,8 +50,13 @@ public class Plugin : BasePlugin
             BuildModel = HarvesterModel.Build,
             Update = v =>
             {
-                HarvesterRig.Update(v);     // body sways with the suspension; lamps on the lamp housings
-                SiloFill.Update(v);         // the dust in the glass silo follows the hopper
+                HarvesterRig.Update(v.authored?.transform);   // body sways with the suspension; lamps on the lamp housings
+                SiloFill.Update(v);                           // the dust in the glass silo follows the hopper
+            },
+            RemoteUpdate = r =>                               // the same for crewmates' harvesters
+            {
+                HarvesterRig.Update(r.AuthoredView?.transform);
+                SiloFill.Update(r);
             },
         });
         price.SettingChanged += (_, _) => Vehicle.Price = price.Value;

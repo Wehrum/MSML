@@ -70,7 +70,10 @@ foreach ($proj in $projects) {
     # No commit hash anywhere in the build (version string, or the SourceLink URL in the embedded PDB), so a mod's zip
     # only changes when the mod itself changes.
     $buildArgs = @("build", $proj.FullName, "-c", "Release", "-nologo", "-v", "m", "--no-incremental", "-p:DeployToGame=true", "-p:GameDeployRoot=$deploy",
-        "-p:IncludeSourceRevisionInInformationalVersion=false", "-p:EnableSourceLink=false", "-p:EnableSourceControlManagerQueries=false")
+        "-p:IncludeSourceRevisionInInformationalVersion=false", "-p:EnableSourceLink=false", "-p:EnableSourceControlManagerQueries=false",
+        # No debug info either: it records the build ID of every referenced assembly (e.g. MSML.Api), which would
+        # change every mod whenever the API is rebuilt. Stack traces still name the methods.
+        "-p:DebugType=none", "-p:DebugSymbols=false")
     if ($GameDir) { $buildArgs += "-p:GameDir=$GameDir" }
     & dotnet @buildArgs | Out-Host
     if ($LASTEXITCODE -ne 0) { throw "Build failed: $($proj.FullName)" }

@@ -22,16 +22,28 @@ internal static class SiloFill
 
     private static readonly Dictionary<IntPtr, State> States = new();
 
+    /// <summary>Your own vehicle: the hopper's kilograms over its capacity.</summary>
     public static void Update(MoonPrototypeVehicle vehicle)
     {
-        if (!States.TryGetValue(vehicle.Pointer, out var state))
+        var capacity = vehicle.DustCapacityKg;
+        var target = capacity > 0 ? Mathf.Clamp01((float)(vehicle.DustKilograms / capacity)) : 0f;
+        Show(vehicle.Pointer, vehicle.authored == null ? null : vehicle.authored.transform, target);
+    }
+
+    /// <summary>A crewmate's vehicle: the fill level the game receives for it (0-1).</summary>
+    public static void Update(MoonRemoteVehicle vehicle) =>
+        Show(vehicle.Pointer, vehicle.AuthoredView == null ? null : vehicle.AuthoredView.transform, Mathf.Clamp01(vehicle.fill));
+
+    private static void Show(IntPtr key, Transform? model, float target)
+    {
+        if (!States.TryGetValue(key, out var state))
         {
             if (States.Count > 64) Prune();
-            States[vehicle.Pointer] = state = new State();
+            States[key] = state = new State();
         }
         if (state.Dust == null || state.Dust.WasCollected)
         {
-            state.Dust = vehicle.authored == null ? null : FindDeep(vehicle.authored.transform, HexHarvesterDesign.SiloDustGroup);
+            state.Dust = model == null ? null : FindDeep(model, HexHarvesterDesign.SiloDustGroup);
             if (state.Dust == null) return;
             state.GarageLook = false;
         }
@@ -42,8 +54,6 @@ internal static class SiloFill
             state.GarageLook = true;
         }
 
-        var capacity = vehicle.DustCapacityKg;
-        var target = capacity > 0 ? Mathf.Clamp01((float)(vehicle.DustKilograms / capacity)) : 0f;
         state.Shown = state.Shown < 0 ? target : Mathf.MoveTowards(state.Shown, target, Rate * Time.deltaTime);
         var visible = state.Shown > 0.002f;
         if (state.Dust.gameObject.activeSelf != visible) state.Dust.gameObject.SetActive(visible);

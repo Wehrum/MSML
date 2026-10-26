@@ -24,6 +24,7 @@ internal static class VehiclePatches
         var harmony = new Harmony("msml.api.vehicles");
         harmony.PatchAll(typeof(VehiclePatches));
         harmony.PatchAll(typeof(VehicleSaves));
+        harmony.PatchAll(typeof(Crew));
     }
 
     private static ModVehicle? Modded(int index) => Vehicles.ByIndex(index);
@@ -156,7 +157,7 @@ internal static class VehiclePatches
         foreach (var v in Vehicles.All)
         {
             var existing = list.FindIndex(o => o != null && o.vehicle == v.Index);
-            if (v.Price is not { } price)
+            if (v.EffectivePrice is not { } price)
             {
                 if (existing >= 0) { list.RemoveAt(existing); changed = true; }
                 continue;
@@ -175,6 +176,7 @@ internal static class VehiclePatches
             changed = true;
         }
         if (changed) MoonWorld.GarageOffers = new Il2CppReferenceArray<MoonWorld.GarageOffer>(list.ToArray());
+        Crew.PublishIfHost();   // the host's prices are the crew's; republish if they changed
     }
 
     [HarmonyPatch(typeof(MoonGarageMenu), nameof(MoonGarageMenu.Build))]
@@ -290,7 +292,7 @@ internal static class VehiclePatches
     private static bool UpgradePriceScale(ref int vehicle, ref Il2CppSystem.Decimal __result)
     {
         if (Modded(vehicle) is not { } v) return true;
-        if (v.UpgradePriceScale is not { } scale) { vehicle = v.BaseVehicle; return true; }
+        if (v.EffectiveUpgradePriceScale is not { } scale) { vehicle = v.BaseVehicle; return true; }
         __result = new Il2CppSystem.Decimal(scale);
         return false;
     }

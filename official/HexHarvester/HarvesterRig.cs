@@ -14,31 +14,32 @@ namespace MSML.HexHarvester;
 /// <item>The game builds head and tail lamps from the base vehicle's body outline, which puts the headlights inside
 /// the harvester's cab. They're moved to the design's lamp housings.</item>
 /// </list>
+/// Works for your own vehicles and crewmates' copies (which have no sprung assembly).
 /// </summary>
 internal static class HarvesterRig
 {
     private const string Sprung = "Sprung visual assembly";
     private const string Visuals = "Hex Harvester visuals";
+    private const string Lights = "Vehicle lights";
     private const string Placed = " (placed)";
 
-    public static void Update(MoonPrototypeVehicle vehicle)
+    /// <param name="model">The vehicle's model root (its MoonAuthoredVehicleView), scaled by the physics scale.</param>
+    public static void Update(Transform? model)
     {
-        var root = vehicle.authored != null ? vehicle.authored.transform : vehicle.transform;
-        var sprung = Find(root, Sprung);
-        if (sprung == null) return;
-
-        var visuals = Find(root, Visuals);
+        if (model == null) return;
+        var sprung = Find(model, Sprung);
+        var visuals = Find(model, Visuals);
         // Same frame as the root at rest (the assembly is at the origin), so the local pose carries over unchanged.
-        if (visuals != null && visuals.parent != sprung) visuals.SetParent(sprung, false);
+        if (sprung != null && visuals != null && visuals.parent != sprung) visuals.SetParent(sprung, false);
 
-        var lights = sprung.Find("Vehicle lights");
-        if (lights != null) PlaceLights(lights);
+        var lights = Find(model, Lights);
+        if (lights != null) PlaceLights(lights, sprung != null && lights.IsChildOf(sprung) ? sprung : model);
     }
 
-    private static void PlaceLights(Transform lights)
+    /// <param name="frame">The frame the design's positions are in: the model root, or the sprung assembly (the
+    /// same frame at rest) when the lights sway with it.</param>
+    private static void PlaceLights(Transform lights, Transform frame)
     {
-        // Light positions are in the assembly's frame (model units = metres / scale); the lights' parent may be offset.
-        var parentFromAssembly = Matrix4x4.TRS(lights.localPosition, lights.localRotation, lights.localScale).inverse;
         for (var i = 0; i < lights.childCount; i++)
         {
             var child = lights.GetChild(i);
@@ -46,13 +47,13 @@ internal static class HarvesterRig
             var isHead = child.name.StartsWith("Headlight");
             var isTail = child.name.StartsWith("Tail");
             if (!isHead && !isTail) continue;
-            var side = child.localPosition.x >= 0 ? 1f : -1f;
+            var side = frame.InverseTransformPoint(child.position).x >= 0 ? 1f : -1f;
             var metres = isHead ? HexHarvesterDesign.Headlight : HexHarvesterDesign.TailLight;
             var lamp = child.GetComponent<Light>() == null;
             // Lamp panes sit on the housing face; the light sources just in front of them.
             var ahead = isHead ? (lamp ? 0f : 0.06f) : (lamp ? 0f : -0.04f);
             var target = new Vector3(side * metres.X, metres.Y, metres.Z + ahead) / HexHarvesterDesign.PhysicsScale;
-            child.localPosition = parentFromAssembly.MultiplyPoint3x4(target);
+            child.position = frame.TransformPoint(target);
             child.name += Placed;
         }
     }

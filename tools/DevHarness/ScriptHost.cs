@@ -83,8 +83,30 @@ internal static class ScriptHost
     /// <summary>Per-frame work: script hooks, and the running coroutine.</summary>
     public static void Tick()
     {
+        WarmUp();
         foreach (var ctx in Loaded.Values.ToList()) ctx.RunHooks();
         if (_running != null) Step();
+    }
+
+    private static bool _warm;
+
+    /// <summary>
+    /// The first script run in a session crashed the .NET runtime when it spawned game objects (reliably: the first
+    /// spawning script after every launch; a harmless script run first prevents it, compiling alone doesn't). So run
+    /// a harmless multi-frame script on an idle frame shortly after startup.
+    /// </summary>
+    private static void WarmUp()
+    {
+        if (_warm || Time.realtimeSinceStartup < 8f || _running != null) return;
+        _warm = true;
+        try
+        {
+            Start("warmup", () => ScriptCompiler.CompileSource("warmup",
+                "public static class WarmUp { public static System.Collections.IEnumerator Run(MoonSweepMods.DevHarness.ScriptContext ctx) { yield return null; yield return 0.2f; } }"),
+                Array.Empty<string>());
+            Plugin.Logger.LogInfo("Script host warmed up.");
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning("Script host warm-up failed: " + e.Message); }
     }
 
     // ---- compile + run ------------------------------------------------------------------------------
@@ -95,6 +117,8 @@ internal static class ScriptHost
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var assembly = compile();
         var compileMs = sw.ElapsedMilliseconds;
+        GC.Collect();   // see WarmUp: don't let compiler garbage be collected while the script creates game objects
+        GC.WaitForPendingFinalizers();
 
         var entry = assembly.GetTypes()
             .Select(t => t.GetMethod("Run", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
@@ -182,7 +206,8 @@ internal static class ScriptHost
         }
         if (_coroutine!.Count > 0 && ctx.Alive) return;
         ctx.EndCapture();
-        _finished = ctx.TakeOutput();
+        var output = ctx.TakeOutput();
+        if (ctx.Name != "warmup") _finished = output;   // nobody is waiting for the warm-up's output
         _running = null;
         _coroutine = null;
     }

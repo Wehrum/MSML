@@ -118,6 +118,12 @@ public sealed class ModVehicle
     /// </summary>
     public Action<MoonPrototypeVehicle>? Update { get; set; }
 
+    /// <summary>
+    /// Called every frame for each crewmate's vehicle of this type (multiplayer: the copy you see of a vehicle someone
+    /// else drives or parked). <c>MoonRemoteVehicle.AuthoredView</c> is its model and <c>fill</c> its hopper level (0-1).
+    /// </summary>
+    public Action<MoonRemoteVehicle>? RemoteUpdate { get; set; }
+
     /// <summary>Hide the local player's body while they drive it (for closed cabs the player model clips through).</summary>
     public bool HideDriver { get; set; }
 
@@ -129,6 +135,17 @@ public sealed class ModVehicle
 
     internal string? IconPath;
     internal Sprite? IconSprite;
+
+    // While in someone else's crew: the host's garage terms (the host charges, so its prices are the real ones).
+    internal bool CrewOverride;
+    internal double? CrewPrice;
+    internal double? CrewUpgradePriceScale;
+
+    /// <summary>The garage price in effect: the host's while in a crew, else <see cref="Price"/>.</summary>
+    public double? EffectivePrice => CrewOverride ? CrewPrice : Price;
+
+    /// <summary>The upgrade price multiplier in effect: the host's while in a crew, else <see cref="UpgradePriceScale"/>.</summary>
+    public double? EffectiveUpgradePriceScale => CrewOverride ? CrewUpgradePriceScale : UpgradePriceScale;
 
     public override string ToString() => $"{Name} ({Id}, #{Index})";
 }
