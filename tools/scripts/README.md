@@ -61,6 +61,7 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `garage-recall.cs` | Stores a bought vehicle and calls it back out: where it lands, and that it drives. |
 | `drive-outside.cs` | Spawns a vehicle next to the parked push sweeper and drives it, logging speed. |
 | `render-icon.cs` | Renders a vehicle's in-game model to a transparent 512x512 garage picture. |
+| `harvester-shots.cs` | Close-up renders of the Hex Harvester (front, side, rear, cab, nose) and checks for wheel height, body sway and lamp positions. |
 | `silo-test.cs` | Renders the Hex Harvester's glass silo at several fill levels (own camera and light, works at night) and lists its upgrade prices. |
 
 ## Known limits

@@ -40,6 +40,18 @@ public sealed class HexHarvesterDesign : IModelDesign
     private static readonly V3 SiloBase = new(0, 1.67f, -1.75f);
     private const float SiloGlassBottom = 0.25f, SiloGlassHeight = 2.2f;
 
+    /// <summary>Right-side lamp spots (mirrored for the left): the game's head and tail lamps are moved here.</summary>
+    public static readonly V3 Headlight = new(0.95f, 2.35f, 4.29f);
+    public static readonly V3 TailLight = new(1.25f, 1.5f, -4.84f);
+
+    /// <summary>Spots for the game's "LSD" logo decal: centre, outward normal, width in metres.</summary>
+    public static readonly (V3 Position, V3 Normal, float Width)[] Logos =
+    {
+        (new V3(1.37f, 1.97f, 2.85f), V3.Right, 1.3f),
+        (new V3(-1.37f, 1.97f, 2.85f), -V3.Right, 1.3f),
+        (new V3(0, 1.3f, 4.91f), new V3(0, 0, 1), 1.0f),
+    };
+
     public Model Build()
     {
         var m = new Model("Hex Harvester");
@@ -68,6 +80,7 @@ public sealed class HexHarvesterDesign : IModelDesign
         Silo(body);
         SiloDustColumn(m);
         Rear(body);
+        Railings(body);
         PushFrame(body);
         HeadFrame(body);
         Ducting(m, body);
@@ -149,10 +162,53 @@ public sealed class HexHarvesterDesign : IModelDesign
         s.Prism(Dark, new V3(0, cy, z1 - 0.22f), new V3(0, cy - 0.05f, z1 + 0.15f), 1.04f, 6, false, 0, 0.75f);
         s.Prism(Cyan, new V3(0, cy - 0.05f, z1 + 0.15f), new V3(0, cy - 0.05f, z1 + 0.18f), 0.6f, 6, false, 0, 0.6f);
 
-        // Headlight bar and lamps.
+        // Headlight bar: cyan running lights inside, housings outside (the game's headlights sit in them).
         s.Box(Dark, new V3(0, 2.35f, z1 + 0.05f), new V3(2.4f, 0.16f, 0.12f));
-        foreach (var x in new[] { -0.95f, -0.6f, 0.6f, 0.95f })
+        foreach (var x in new[] { -0.6f, 0.6f })
             s.Box(Cyan, new V3(x, 2.35f, z1 + 0.12f), new V3(0.26f, 0.08f, 0.03f));
+        foreach (var x in new[] { -Headlight.X, Headlight.X })
+        {
+            s.Box(Dark, new V3(x, Headlight.Y, z1 + 0.08f), new V3(0.36f, 0.3f, 0.14f));
+            s.Box(Metal, new V3(x, Headlight.Y, z1 + 0.135f), new V3(0.3f, 0.24f, 0.02f));
+        }
+
+        // Wipers on the visor.
+        foreach (var x in new[] { -0.3f, 0.3f })
+            s.Rod(Dark, new V3(x, cy - 0.5f, z1 + 0.05f), new V3(x + 0.22f, cy + 0.15f, z1 - 0.08f), 0.018f, 6);
+
+        // Front grille and tow hooks on the nose block.
+        for (var y = 1.08f; y <= 1.52f; y += 0.11f)
+            s.Box(Steel, new V3(0, y, 4.9f), new V3(1.3f, 0.05f, 0.03f));
+        foreach (var x in new[] { -0.75f, 0.75f })
+        {
+            s.Box(Orange, new V3(x, 1.0f, 4.95f), new V3(0.14f, 0.18f, 0.14f));
+            s.Prism(Dark, new V3(x - 0.08f, 0.94f, 5.03f), new V3(x + 0.08f, 0.94f, 5.03f), 0.06f, 8, true);
+        }
+
+        // Boarding steps and grab rails up to the cab doors, ahead of the front wheels.
+        foreach (var side in new[] { -1f, 1f })
+        {
+            var x = side * 1.5f;
+            for (var i = 0; i < 3; i++)
+            {
+                var y = 0.75f + i * 0.33f;
+                s.Box(Dark, new V3(x, y, 3.35f), new V3(0.42f, 0.05f, 0.5f));
+                s.Box(Metal, new V3(x, y + 0.03f, 3.35f), new V3(0.38f, 0.01f, 0.46f));
+            }
+            s.Box(Dark, new V3(x + side * 0.19f, 1.1f, 3.35f), new V3(0.04f, 0.8f, 0.5f));
+            s.Rod(Metal, new V3(side * 1.4f, 1.9f, 3.0f), new V3(side * 1.4f, 2.9f, 3.0f), 0.025f);
+            s.Rod(Metal, new V3(side * 1.4f, 1.9f, 3.7f), new V3(side * 1.4f, 2.9f, 3.7f), 0.025f);
+            // Door seam and handle on the canopy side.
+            s.Box(Dark, new V3(side * 0.97f, cy, 3.1f), new V3(0.04f, 0.9f, 0.04f));
+            s.Rod(Metal, new V3(side * 1.0f, cy - 0.12f, 2.6f), new V3(side * 1.0f, cy - 0.12f, 2.85f), 0.02f);
+        }
+
+        // Roof: a light bar along the front edge, and an air-conditioning unit.
+        s.Box(Dark, new V3(0, cy + 1.0f, z1 - 0.55f), new V3(1.3f, 0.1f, 0.16f));
+        foreach (var x in new[] { -0.45f, -0.15f, 0.15f, 0.45f })
+            s.Box(x < -0.3f || x > 0.3f ? Orange : Cyan, new V3(x, cy + 1.0f, z1 - 0.46f), new V3(0.2f, 0.06f, 0.02f));
+        s.Box(Shell, new V3(0, cy + 1.02f, mid - 0.1f), new V3(0.6f, 0.16f, 0.5f));
+        s.Prism(Dark, new V3(0, cy + 1.1f, mid - 0.1f), new V3(0, cy + 1.12f, mid - 0.1f), 0.18f, 16, true);
 
         // Mirrors.
         foreach (var side in new[] { -1f, 1f })
@@ -239,11 +295,37 @@ public sealed class HexHarvesterDesign : IModelDesign
             s.Cylinder(Metal, new V3(x, 2.4f, -3.55f), new V3(x, 3.65f, -3.55f), 0.11f, 14);
             s.Cylinder(Dark, new V3(x, 3.65f, -3.55f), new V3(x, 3.8f, -3.55f), 0.14f, 14);
         }
-        // Bumper with hazard stripes and tail lights.
+        // Bumper with hazard stripes and tail-lamp housings (the game's tail lights sit in them).
         s.Box(Dark, new V3(0, 1.05f, zb - 0.1f), new V3(3.0f, 0.36f, 0.25f));
         s.HazardStripes(Hazard, new V3(0, 1.05f, zb - 0.225f), M3.RotY(180), 2.8f, 0.3f);
-        foreach (var x in new[] { -1.25f, 1.25f })
-            s.Box(Red, new V3(x, 1.5f, zb - 0.05f), new V3(0.4f, 0.14f, 0.05f));
+        foreach (var x in new[] { -TailLight.X, TailLight.X })
+        {
+            s.Box(Dark, new V3(x, TailLight.Y, zb - 0.02f), new V3(0.48f, 0.34f, 0.1f));
+            s.Box(Red, new V3(x, TailLight.Y, zb - 0.07f), new V3(0.4f, 0.12f, 0.02f));
+        }
+
+        // Rear ID plate.
+        s.Box(Shell, new V3(0, 1.48f, zb - 0.02f), new V3(0.7f, 0.22f, 0.04f));
+        s.Box(Dark, new V3(0, 1.48f, zb - 0.045f), new V3(0.6f, 0.12f, 0.01f));
+    }
+
+    /// <summary>Handrails along the deck edges between the cab and the engine pod.</summary>
+    private static void Railings(Shapes s)
+    {
+        const float x = 1.47f, z0 = -3.2f, z1 = 1.35f, deck = 1.67f, height = 0.85f;
+        foreach (var side in new[] { -1f, 1f })
+        {
+            for (var z = z0; z <= z1 + 0.01f; z += (z1 - z0) / 5)
+                s.Rod(Metal, new V3(side * x, deck, z), new V3(side * x, deck + height, z), 0.025f, 6);
+            s.Rod(Orange, new V3(side * x, deck + height, z0), new V3(side * x, deck + height, z1), 0.03f, 8);
+            s.Rod(Metal, new V3(side * x, deck + height * 0.5f, z0), new V3(side * x, deck + height * 0.5f, z1), 0.02f, 6);
+        }
+        // Hydraulic lines along the chassis rails.
+        foreach (var side in new[] { -1f, 1f })
+        {
+            s.Rod(Orange, new V3(side * 1.12f, 1.05f, -4.4f), new V3(side * 1.12f, 1.05f, 4.4f), 0.03f, 6);
+            s.Rod(Steel, new V3(side * 1.12f, 1.12f, -4.4f), new V3(side * 1.12f, 1.12f, 4.4f), 0.025f, 6);
+        }
     }
 
     // ---- push frame and head --------------------------------------------------------------------------

@@ -70,7 +70,18 @@ internal static class HarvesterModel
         model.transform.localScale = Vector3.one * scale;
 
         var hidden = 0;
-        foreach (var r in model.GetComponentsInChildren<Renderer>(true)) { r.enabled = false; hidden++; }
+        var roverMaterials = new Dictionary<string, Material>();
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+        {
+            foreach (var mat in r.sharedMaterials)
+                if (mat != null && !roverMaterials.ContainsKey(mat.name)) roverMaterials[mat.name] = mat;
+            // The rover's wheels are detailed game meshes that already fit (radius 0.66 x 1.45 = our tyres): keep them.
+            if (r.transform.parent != null && r.transform.parent.name.StartsWith("Wheel_")) continue;
+            r.enabled = false;
+            hidden++;
+        }
+        // The rover's own paints (the game's "Station finish" shader), so the harvester is shaded like stock vehicles.
+        Material? Rover(string name) => roverMaterials.TryGetValue(name, out var found) ? found : null;
 
         var root = new GameObject("Hex Harvester visuals").transform;
         root.SetParent(model.transform, false);
@@ -82,11 +93,14 @@ internal static class HarvesterModel
             if (materials.TryGetValue(name, out var m)) return m;
             m = name switch
             {
-                "shell" => kit.shell,
-                "dark" => kit.dark,
-                "orange" => kit.orange,
+                "shell" => Rover("009") ?? kit.shell,
+                "dark" => Rover("002") ?? kit.dark,
+                "orange" => Rover("003") ?? kit.orange,
                 "glass" => kit.glass,
-                "metal" => kit.metal,
+                "metal" => Rover("001") ?? kit.metal,
+                "steel" => Rover("004"),
+                "rubber" => Rover("011"),
+                "hazard" => Rover("007"),
                 "cyan" => kit.cyan,
                 HexHarvesterDesign.SiloGlass => SiloGlass(),
                 HexHarvesterDesign.SiloDust => GarageMaterial("Garage - Container dust"),
@@ -112,6 +126,12 @@ internal static class HarvesterModel
 
         var made = UnityModelBuilder.Build(design, root, Mat, ParentFor);
 
+        // The design's own wheels are for the offline preview; in the game the rover's wheels are used.
+        foreach (var (name, t) in made)
+            if (name.StartsWith("Wheel_") && t.parent != null && t.parent.name.EndsWith(" visual")) UnityEngine.Object.Destroy(t.parent.gameObject);
+
+        AddLogos(root, Rover("016"));
+
         // Rollers: the game spins view.rollers while cleaning.
         var rollers = new List<Transform>();
         foreach (var (name, t) in made) if (name.StartsWith("Roller ")) rollers.Add(t);
@@ -123,7 +143,8 @@ internal static class HarvesterModel
         // The game scales the cleaned strip by the model's scale, like the offset below.
         view.cleaningWidth = design.Values["cleaningWidth"] / scale;
         view.cleaningOffset = design.Values["headZ"] / scale;
-        view.wheelRadius = design.Values["wheelRadius"];
+        // Like the width: the game places the wheel visuals at contact + wheelRadius x the model's scale.
+        view.wheelRadius = design.Values["wheelRadius"] / scale;
 
         // Hoses: the game pulses these meshes along their paths while sucking, and plays the hose sound.
         var hoses = new List<MoonAuthoredVehicleView.Hose>();
@@ -142,5 +163,28 @@ internal static class HarvesterModel
 
         Plugin.Logger.LogInfo($"Built Hex Harvester model: hid {hidden} rover renderers, {made.Count} parts, " +
             $"{rollers.Count} brush rollers, {hoses.Count} hoses, cleaning width {view.cleaningWidth} m, offset {view.cleaningOffset}.");
+    }
+
+    /// <summary>
+    /// The rover's "LSD" logo decal (a game texture) on the design's logo spots: quads, since the design's meshes have
+    /// no texture coordinates.
+    /// </summary>
+    private static void AddLogos(Transform root, Material? logo)
+    {
+        if (logo == null) return;
+        foreach (var (position, normal, width) in HexHarvesterDesign.Logos)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            UnityEngine.Object.Destroy(quad.GetComponent<Collider>());
+            quad.name = "LSD logo";
+            quad.transform.SetParent(root, false);
+            quad.transform.localPosition = UnityModelBuilder.ToUnity(position);
+            // A quad faces -Z; turn it so its front faces along the surface normal.
+            quad.transform.localRotation = Quaternion.LookRotation(-UnityModelBuilder.ToUnity(normal), Vector3.up);
+            var texture = logo.mainTexture;
+            var aspect = texture != null && texture.width > 0 ? (float)texture.height / texture.width : 0.25f;
+            quad.transform.localScale = new Vector3(width, width * aspect, 1);
+            quad.GetComponent<Renderer>().sharedMaterial = logo;
+        }
     }
 }

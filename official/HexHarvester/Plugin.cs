@@ -16,7 +16,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.hexharvester";
     public const string Name = "Hex Harvester";
-    public const string Version = "0.3.0";
+    public const string Version = "0.4.0";
 
     internal static ManualLogSource Logger = null!;
 
@@ -48,7 +48,11 @@ public class Plugin : BasePlugin
             HideDriver = true,     // the cab is closed and the player model clips through it
             DeliverOutsideGarage = true,   // too big to drive out of the garage hall
             BuildModel = HarvesterModel.Build,
-            Update = SiloFill.Update,      // the dust in the glass silo follows the hopper
+            Update = v =>
+            {
+                HarvesterRig.Update(v);     // body sways with the suspension; lamps on the lamp housings
+                SiloFill.Update(v);         // the dust in the glass silo follows the hopper
+            },
         });
         price.SettingChanged += (_, _) => Vehicle.Price = price.Value;
         upgrades.SettingChanged += (_, _) => Vehicle.UpgradePriceScale = upgrades.Value;

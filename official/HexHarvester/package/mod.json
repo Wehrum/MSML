@@ -1,7 +1,7 @@
 {
   "id": "msml.hexharvester",
   "name": "Hex Harvester",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "author": "MSML",
   "description": "A new vehicle, sold in the garage for $100,000: the Hex Harvester. A six-wheeled harvester with a hex-glass cab, a glass hex silo that visibly fills with dust as you clean, and a 25 m truss-mounted sweeper head with five brush pods. It clears a whole hex in one pass.\n\nIt runs on the game's own vehicle code, so driving, cleaning, the hopper, unloading, upgrades, lights and sounds all work like the other vehicles. Its price and upgrade prices can be changed in SETTINGS. It's too big for the garage hall, so it's delivered in front of the garage.\n\nSaves stay safe: if you remove the mod, a bought Hex Harvester just disappears from the garage until the mod is back. Everyone in a crew needs the mod."
 }

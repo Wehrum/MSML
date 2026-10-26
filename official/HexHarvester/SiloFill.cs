@@ -31,7 +31,7 @@ internal static class SiloFill
         }
         if (state.Dust == null || state.Dust.WasCollected)
         {
-            state.Dust = vehicle.authored == null ? null : vehicle.authored.transform.Find("Hex Harvester visuals/" + HexHarvesterDesign.SiloDustGroup);
+            state.Dust = vehicle.authored == null ? null : FindDeep(vehicle.authored.transform, HexHarvesterDesign.SiloDustGroup);
             if (state.Dust == null) return;
             state.GarageLook = false;
         }
@@ -48,6 +48,13 @@ internal static class SiloFill
         var visible = state.Shown > 0.002f;
         if (state.Dust.gameObject.activeSelf != visible) state.Dust.gameObject.SetActive(visible);
         if (visible) state.Dust.localScale = new Vector3(1f, state.Shown, 1f);
+    }
+
+    private static Transform? FindDeep(Transform parent, string name)
+    {
+        foreach (var t in parent.GetComponentsInChildren<Transform>(true))
+            if (t.name == name) return t;
+        return null;
     }
 
     private static void Prune()
