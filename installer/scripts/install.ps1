@@ -31,7 +31,9 @@
 param(
     [string]$GameDir,
     [string]$PayloadDir,
-    [switch]$ForceRegenerate
+    [switch]$ForceRegenerate,
+    # Install even if the game's Unity/metadata version isn't one this MSML release supports.
+    [switch]$IgnoreCompatibility
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,6 +121,22 @@ try {
     Write-Host "Game folder: $GameDir"
     Assert-GameClosed
 
+    # Game compatibility ----------------------------------------------------------------------------
+    $game = Get-GameInfo $GameDir
+    Write-Host "Game: Moon Sweepers $(Format-GameInfo $game)"
+    if ($pack.requires) {
+        $engineOk = $game.metadata -eq $pack.requires.metadata -and "$($game.unity)".StartsWith("$($pack.requires.unity)")
+        if (-not $engineOk -and -not $IgnoreCompatibility) {
+            throw "This game version (Unity $($game.unity), metadata v$($game.metadata)) isn't supported by MSML $($pack.version), " +
+                "which needs Unity $($pack.requires.unity) / metadata v$($pack.requires.metadata). The game probably got a big update: " +
+                "wait for a newer MSML release, then run the install command again."
+        }
+        $testedHere = @($pack.testedGames | Where-Object { $_.gameAssemblySha256 -eq $game.gameAssemblySha256 })
+        if ($testedHere | Where-Object { $_.msml -eq $pack.version }) { Write-Host "    Tested with this MSML release." -ForegroundColor Green }
+        elseif ($testedHere) { Write-Host "    Tested with MSML $($testedHere[0].msml)." -ForegroundColor Green }
+        else { Write-Host "    This exact game build hasn't been tested with MSML $($pack.version) yet. It usually works; if mods misbehave, check for an MSML update." -ForegroundColor Yellow }
+    }
+
     # Files extracted from a downloaded zip carry the "downloaded from the internet" mark; clear it.
     Get-ChildItem $PayloadDir -Recurse -File | Unblock-File
 
@@ -139,7 +157,7 @@ try {
     Install-UnityLibs $GameDir $unityLibs
 
     $interopDir = Join-Path $BepInEx "interop"
-    $gameHash = (Get-FileHash (Join-Path $GameDir "GameAssembly.dll") -Algorithm SHA256).Hash
+    $gameHash = $game.gameAssemblySha256
     $upToDate = $stamp -and $stamp.gameAssemblySha256 -eq $gameHash -and $stamp.toolsId -eq $pack.toolsId `
         -and (Test-Path (Join-Path $interopDir "Assembly-CSharp.dll"))
 
@@ -200,10 +218,13 @@ try {
         packVersion        = $pack.version
         toolsId            = $pack.toolsId
         gameAssemblySha256 = $gameHash
+        game               = $game
+        requires           = $pack.requires
+        testedGames        = @($pack.testedGames | Where-Object { $_ })
         plugins            = @($installedPlugins | Where-Object { $_ })
         patchers           = @($installedPatchers | Where-Object { $_ })
         installedAt        = (Get-Date -Format s)
-    } | ConvertTo-Json | Set-Content $stampPath -Encoding utf8
+    } | ConvertTo-Json -Depth 5 | Set-Content $stampPath -Encoding utf8
 
     Write-Host ""
     Write-Host "Done! Launch Moon Sweepers from Steam as usual." -ForegroundColor Green

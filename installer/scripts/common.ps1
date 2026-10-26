@@ -68,3 +68,46 @@ function Resolve-GameDir([string]$GameDir) {
 function Assert-GameClosed {
     if (Get-Process MoonSweepers -ErrorAction SilentlyContinue) { throw "Moon Sweepers is running. Close the game and try again." }
 }
+
+<#
+  Identifies the installed game: version string (as shown in the main menu), Steam build id, Unity version,
+  IL2CPP metadata version, and a SHA-256 of GameAssembly.dll (changes with every game update).
+  MSML needs a matching Unity/metadata version (its patched Il2CppInterop is built for them); other game updates
+  usually work after the installer regenerates the interop assemblies.
+#>
+function Get-GameInfo([string]$GameDir) {
+    $info = [ordered]@{ version = $null; steamBuild = $null; unity = $null; metadata = $null; gameAssemblySha256 = $null }
+    try {
+        $ggm = [IO.File]::ReadAllBytes((Join-Path $GameDir "MoonSweepers_Data\globalgamemanagers"))
+        $text = [Text.Encoding]::GetEncoding(28591).GetString($ggm)   # Latin-1: one char per byte
+        $info.unity = [regex]::Match($text.Substring(0, [Math]::Min(512, $text.Length)), '(\d{4}\.\d+\.\d+)[abfp]\d+').Groups[1].Value
+        # PlayerSettings.bundleVersion: a length-prefixed string such as "1.0.4". Prefer the most specific match.
+        $best = $null
+        foreach ($m in [regex]::Matches($text, '([\x03-\x10])\x00\x00\x00(\d+\.\d+(?:\.\d+){0,2})')) {
+            $v = $m.Groups[2].Value
+            if ([int][char]$m.Groups[1].Value -ne $v.Length -or $v -eq $info.unity) { continue }
+            if (-not $best -or $v.Split('.').Count -gt $best.Split('.').Count) { $best = $v }
+        }
+        $info.version = $best
+    } catch { }
+    try {
+        $meta = Join-Path $GameDir "MoonSweepers_Data\il2cpp_data\Metadata\global-metadata.dat"
+        $fs = [IO.File]::OpenRead($meta); $buf = New-Object byte[] 8; [void]$fs.Read($buf, 0, 8); $fs.Dispose()
+        $info.metadata = [BitConverter]::ToInt32($buf, 4)
+    } catch { }
+    try {
+        $manifest = Join-Path (Split-Path (Split-Path $GameDir)) "appmanifest_$MoonSweepersAppId.acf"
+        if (Test-Path $manifest) { $info.steamBuild = [regex]::Match((Get-Content $manifest -Raw), '"buildid"\s+"(\d+)"').Groups[1].Value }
+    } catch { }
+    $info.gameAssemblySha256 = (Get-FileHash (Join-Path $GameDir "GameAssembly.dll") -Algorithm SHA256).Hash
+    return [pscustomobject]$info
+}
+
+function Format-GameInfo($g) {
+    $parts = @()
+    if ($g.version) { $parts += "v$($g.version)" }
+    if ($g.steamBuild) { $parts += "Steam build $($g.steamBuild)" }
+    if ($g.unity) { $parts += "Unity $($g.unity)" }
+    if ($g.metadata) { $parts += "metadata v$($g.metadata)" }
+    return ($parts -join ", ")
+}

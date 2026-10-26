@@ -23,6 +23,7 @@ public class Plugin : BasePlugin
         Logger = Log;
         AddComponent<ModLoaderBehaviour>();
         new Harmony(Guid).PatchAll(typeof(MenuHooks));
+        VersionCheck.Start();
         Log.LogInfo($"Mod Loader {Version}: mods folder is {ModPaths.ModsDir}");
     }
 }

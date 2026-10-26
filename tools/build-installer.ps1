@@ -72,7 +72,7 @@ if (-not $Version) {
     if ($LASTEXITCODE -ne 0 -or -not $Version) { $Version = Get-Date -Format "yyyy.MM.dd" }
     $Version = "$Version".TrimStart("v")
 }
-$packName = "MoonSweepMods-$Version"
+$packName = "MSML-$Version"
 
 # 1. Tools payload ------------------------------------------------------------------------------
 $toolsPayload = & (Join-Path $PSScriptRoot "build-tools.ps1") -SkipBuild:$SkipBuild
@@ -84,7 +84,7 @@ $deploy = Join-Path $Artifacts "deploy"
 Step "Staging $stage"
 Remove-Item -Recurse -Force $stage, $deploy -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $stage | Out-Null
-Copy-Item -Recurse (Join-Path $RepoRoot "installer\*") $stage
+Copy-Item -Recurse (Join-Path $RepoRoot "installer\*") $stage -Exclude "get.ps1"
 Copy-Item -Recurse $toolsPayload $payload
 
 Step "Building the mod loader"
@@ -96,8 +96,29 @@ $loaderVersion = (Get-Item (Join-Path $payload "plugins\MoonSweepMods.ModLoader\
 
 $pack = Get-Content (Join-Path $payload "pack.json") -Raw | ConvertFrom-Json
 $pack.version = $Version
+$pack.name = "MSML (Moon Sweepers Mod Loader)"
 $pack | Add-Member -Force NoteProperty modLoader $loaderVersion
 $pack.PSObject.Properties.Remove("plugins")
+
+# Game compatibility: record the game this release was built and tested against (compatibility.json, committed).
+. ([scriptblock]::Create((Get-Content (Join-Path $RepoRoot "installer\scripts\common.ps1") -Raw)))
+$testGameDir = Resolve-GameDir $(if ($GameDir) { $GameDir } else { $null })
+$game = Get-GameInfo $testGameDir
+Step "Built against Moon Sweepers $(Format-GameInfo $game)"
+$compatPath = Join-Path $RepoRoot "compatibility.json"
+$compat = Get-Content $compatPath -Raw | ConvertFrom-Json
+if ($game.metadata -ne $compat.requires.metadata -or -not "$($game.unity)".StartsWith("$($compat.requires.unity)")) {
+    throw "Your game is Unity $($game.unity) / metadata v$($game.metadata), but compatibility.json requires Unity $($compat.requires.unity) / metadata v$($compat.requires.metadata). Update the Il2CppInterop patch and compatibility.json first."
+}
+$tested = @($compat.tested | Where-Object { -not ($_.msml -eq $Version -and $_.gameAssemblySha256 -eq $game.gameAssemblySha256) })
+$tested = @([pscustomobject][ordered]@{
+    msml = $Version; game = $game.version; steamBuild = $game.steamBuild; gameAssemblySha256 = $game.gameAssemblySha256
+    date = (Get-Date -Format "yyyy-MM-dd")
+}) + $tested
+$compat.tested = $tested
+$compat | ConvertTo-Json -Depth 5 | Set-Content $compatPath -Encoding utf8
+$pack | Add-Member -Force NoteProperty requires ([ordered]@{ unity = $compat.requires.unity; metadata = $compat.requires.metadata })
+$pack | Add-Member -Force NoteProperty testedGames @($tested | Select-Object msml, game, steamBuild, gameAssemblySha256)
 $pack | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $payload "pack.json") -Encoding utf8
 
 # 3. Notices + installer zip --------------------------------------------------------------------
@@ -155,6 +176,34 @@ foreach ($dir in Get-ChildItem (Join-Path $deploy "Mods") -Directory -ErrorActio
     $modZips += $modZip
 }
 Remove-Item -Recurse -Force $deploy
+
+# 5. GitHub release folder: get.ps1 (the one-liner), the installer, mods, and release.json with checksums -----------
+$release = Join-Path $Artifacts "release"
+Step "Assembling release files in $release"
+Remove-Item -Recurse -Force $release -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force $release | Out-Null
+Copy-Item (Join-Path $RepoRoot "installer\get.ps1") $release
+Copy-Item $zip $release
+$scriptEntries = @(foreach ($s in "common.ps1", "uninstall.ps1") {
+    $src = Join-Path $RepoRoot "installer\scripts\$s"
+    Copy-Item $src $release
+    [ordered]@{ file = $s; sha256 = (Get-FileHash $src -Algorithm SHA256).Hash }
+})
+$modEntries = @(foreach ($m in $modZips) {
+    Copy-Item $m $release
+    $file = Split-Path -Leaf $m
+    $match = [regex]::Match($file, '^(.*)-([0-9][^-]*)\.zip$')
+    [ordered]@{ name = $match.Groups[1].Value; version = $match.Groups[2].Value; file = $file; sha256 = (Get-FileHash $m -Algorithm SHA256).Hash; bytes = (Get-Item $m).Length }
+})
+[ordered]@{
+    version   = $Version
+    published = (Get-Date).ToUniversalTime().ToString("s") + "Z"
+    installer = [ordered]@{ file = (Split-Path -Leaf $zip); sha256 = (Get-FileHash $zip -Algorithm SHA256).Hash; bytes = (Get-Item $zip).Length }
+    scripts   = $scriptEntries
+    requires  = $pack.requires
+    testedGames = $pack.testedGames
+    mods      = $modEntries
+} | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $release "release.json") -Encoding utf8
 
 Write-Host ("Built {0} ({1:N1} MB): BepInEx + mod loader {2}" -f $zip, ((Get-Item $zip).Length / 1MB), $loaderVersion) -ForegroundColor Green
 foreach ($m in $modZips) { Write-Host "Built mod $m" -ForegroundColor Green }

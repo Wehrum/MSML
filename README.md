@@ -1,10 +1,27 @@
-# Moon Sweepers Mod Loader
+# MSML: Moon Sweepers Mod Loader
 
 A mod loader for **Moon Sweepers** (Unity 6000.6.0f1, IL2CPP metadata v108), built on BepInEx 6.
 
-Players run a one-click installer. It adds a **MODS** entry to the game's main menu, with a screen where they add,
-enable and disable mods, RimWorld-style. Mods are separate downloads that players drop into `<game>\Mods`, or add
-in-game with **ADD MOD**. This repo holds the loader, the installer pipeline, and example mods to build from.
+## Install or update (players)
+
+Close Moon Sweepers, open PowerShell, and paste:
+
+```powershell
+irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
+```
+
+Run the same command again to update MSML, including after a Moon Sweepers update. Your mods and settings are kept. Options:
+
+```powershell
+# Also install mods from the release:
+& ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Mods HexHarvester,DebugMenu
+# Uninstall (keeps your Mods folder):
+& ([scriptblock]::Create((irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1))) -Uninstall
+```
+
+MSML adds a **MODS** entry to the game's main menu, with a screen where players add, enable and disable mods,
+RimWorld-style. Mods are separate downloads that players drop into `<game>\Mods`, or add in-game with **ADD MOD**.
+This repo holds the loader, the installer pipeline, and example mods to build from.
 
 ## How it works
 
@@ -162,26 +179,61 @@ Logging: the installer sets BepInEx to log every level, including Unity's own lo
 
 ## Releasing
 
+Publish a release (builds everything, tags it, and uploads it to GitHub):
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tools\build-installer.ps1 -Version 0.2.0   # -SkipBuild reuses built tools
+powershell -ExecutionPolicy Bypass -File .\tools\publish-release.ps1 -Version 0.5.0 -Notes "What changed"
 ```
 
-This writes:
+It needs the GitHub CLI (`winget install GitHub.cli`, then `gh auth login`) and a clean working tree. Players get the
+release the next time they run the install command, because `releases/latest/download/...` always points at the
+newest release. To build without publishing, run `tools\build-installer.ps1 -Version x.y.z` (`-SkipBuild` reuses
+the built tools).
 
-- **`artifacts\MoonSweepMods-<Version>.zip` (about 80 MB):** the installer. Players extract it and double-click
-  `Install.bat`. They don't need .NET, git, or this repo. Player instructions are in
-  [`installer/README.txt`](installer/README.txt).
-- **`artifacts\mods\<Mod>-<version>.zip`:** one drop-in zip per project in `examples/`. Players add it with ADD MOD.
+The build writes `artifacts\release\`, and those files become the release assets:
 
-The installer:
+| File | What it is |
+|---|---|
+| `get.ps1` | The one-liner script. It reads `release.json`, checks the game, and installs or updates |
+| `release.json` | Version, SHA-256 checksums of every file, required Unity/metadata version, tested game builds, and the mod list |
+| `MSML-<Version>.zip` (about 80 MB) | The installer. It's only downloaded when something needs installing, and also works offline: extract it and run `Install.bat` |
+| `common.ps1`, `uninstall.ps1` | Small helper scripts `get.ps1` uses before deciding whether to download the zip |
+| `<Mod>-<version>.zip` | One drop-in zip per project in `examples/` (`-Mods` in the one-liner, or ADD MOD in-game) |
 
-- finds the game through Steam (or asks for the folder)
-- installs BepInEx, the patched Il2CppInterop runtime and the mod loader, and creates `<game>\Mods`
-- downloads Unity's base libraries and generates the interop assemblies from the player's own copy of the game,
-  using self-contained Cpp2IL and Il2CppInterop exes bundled in the zip (about 20 seconds)
+### Game version pairing
 
-Re-running `Install.bat` is safe and quick. It only regenerates when the game or the tools changed, so players re-run
-it after game updates. `Uninstall.bat` restores the vanilla game and keeps the player's `Mods` folder.
+Each MSML release is paired with the game it was built for:
+
+- **[`compatibility.json`](compatibility.json)** holds the required engine (`requires`: Unity 6000.6 and IL2CPP
+  metadata v108, the versions the Il2CppInterop patch is built for) and a `tested` list. Each `tested` entry records
+  the MSML version, the game version (for example `1.0.4`), the Steam build id and a `GameAssembly.dll` SHA-256.
+  `build-installer.ps1` adds an entry from your own game install on every build, and refuses to build if your game's
+  engine doesn't match `requires`.
+- **The installer and `get.ps1`** read the player's game version, Steam build, Unity and metadata versions, and
+  `GameAssembly.dll` hash.
+  - They refuse an unsupported engine; `-Force` installs anyway.
+  - They report whether this exact game build was tested.
+  - They regenerate the interop assemblies after a game update.
+- **In game**, the mod loader compares the running game with the release's tested version. This is local only, with
+  no network calls. On a mismatch, or if Steam updated the game since MSML was installed, opening **MODS** shows a
+  "Version mismatch" dialog once per session. The player can proceed at their own risk or go back.
+
+When Moon Sweepers updates:
+
+1. Run `tools\setup-modding.ps1 -SkipBuild`.
+2. Test the mods.
+3. Publish a new release. Its build adds the new game version to `compatibility.json`.
+4. If the engine (Unity or metadata) changed, update the Il2CppInterop patch and `requires` first.
+
+### The installer
+
+- It finds the game through Steam, or asks for the folder.
+- It installs BepInEx, the patched Il2CppInterop runtime and the mod loader, and creates `<game>\Mods`.
+- It downloads Unity's base libraries and generates the interop assemblies from the player's own copy of the game,
+  using self-contained Cpp2IL and Il2CppInterop exes bundled in the zip (about 20 seconds).
+- It turns on full logging (every level, plus Unity's log) in `BepInEx\LogOutput.log`.
+- Re-running it only regenerates when the game or the tools changed. If it can't write to the game folder, it asks
+  for administrator rights.
 
 | Path in the installer zip | Contents |
 |---|---|

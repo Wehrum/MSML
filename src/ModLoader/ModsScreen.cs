@@ -109,13 +109,27 @@ internal static class ModsScreen
         if (_entry?.detail == null) return;
         LoadState();
         var pending = HasPendingChanges();
-        _entry.detail.text = pending ? "Restart to apply mod changes" : "";
-        _entry.detail.gameObject.SetActive(pending);
+        _entry.detail.text = pending ? "Restart to apply mod changes" : VersionCheck.MenuNote;
+        _entry.detail.gameObject.SetActive(_entry.detail.text.Length > 0);
     }
 
     // ---- open / close ----------------------------------------------------------------------------
 
+    private static bool _mismatchAccepted;
+
     public static void Open()
+    {
+        if (_menu == null || IsOpen || _menu.current != MoonMainMenu.Panel.None || DialogOpen) return;
+        if (VersionCheck.Mismatch && !_mismatchAccepted)
+        {
+            // Once per session: warn before opening the Mods screen.
+            Ask("Version mismatch", VersionCheck.MismatchMessage, "PROCEED", () => { _mismatchAccepted = true; OpenScreen(); }, "BACK");
+            return;
+        }
+        OpenScreen();
+    }
+
+    private static void OpenScreen()
     {
         if (_menu == null || IsOpen || _menu.current != MoonMainMenu.Panel.None) return;
         EnsureBuilt();
@@ -234,7 +248,10 @@ internal static class ModsScreen
         _footer.Add(kit.NewChip(_root, "ADD MOD", Left, FootY, 46, 18, Act(AddMod), null, null, false));
         _footer.Add(kit.NewChip(_root, "OPEN MODS FOLDER", Left, FootY, 46, 18, Act(ModActions.OpenModsFolder), null, null, false));
         _restartChip = kit.NewChip(_root, "RESTART TO APPLY", 0, FootY, 46, 18, Act(ConfirmRestart), null, null, true);
+        _version = kit.Text(_root, "", DetX, 136, DetW, 30, 16, MoonSimpleKit.Faint, false, TextAlignmentOptions.MidlineRight);
     }
+
+    private static TMP_Text? _version;
 
     private static readonly List<MoonSimpleKit.Chip> _footer = new();
 
@@ -291,6 +308,7 @@ internal static class ModsScreen
             : "Choose which mods load when the game starts. Changes apply after a restart.";
         _status.color = pending ? MoonSimpleKit.Orange : MoonSimpleKit.Faint;
         _restartChip!.rect.gameObject.SetActive(pending);
+        _version!.text = VersionCheck.StatusLine(Hex(MoonSimpleKit.Orange));
         FillDetails();
     }
 

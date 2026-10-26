@@ -1,5 +1,5 @@
-MOON SWEEPERS MOD LOADER
-========================
+MSML - MOON SWEEPERS MOD LOADER
+===============================
 
 This adds mod support to Moon Sweepers: a MODS option in the main menu where you add, enable and disable mods.
 It doesn't change the game by itself.
@@ -36,7 +36,7 @@ Only install mods from people you trust. Mods are programs that run with the gam
 
 After a game update
 -------------------
-Run Install.bat again. The mod loader is built against your exact game version, so it needs refreshing after each
+Run Install.bat again (or the install command: irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex). The mod loader is built against your exact game version, so it needs refreshing after each
 update. Re-running is safe and quick when nothing has changed, and your mods and settings are kept.
 
 Multiplayer
