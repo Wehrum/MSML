@@ -27,17 +27,11 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
 ### Example mods
 
-| Mod | What it shows |
-|---|---|
-| [`HelloWorld`](examples/HelloWorld) | The minimal mod: a plugin, a custom `MonoBehaviour`, and a Harmony hook |
-| [`DebugMenu`](examples/DebugMenu) | A uGUI panel in the pause menu: unlimited money, +$10k/+$1M, unlimited suit energy, fly mode, empty/fill the hopper, and spawn any catalog vehicle (including mod-added ones). It only reports a spawn as successful once the vehicle is visible and on the ground |
-| [`HexHarvester`](examples/HexHarvester) | A brand-new vehicle. It's added as a new entry in the game's vehicle catalog and runs on the game's own vehicle code (driving, cleaning, hopper, unloading, lights, audio). It has an original ModelKit model and a 25 m (one hex) cleaning head. It isn't sold in the garage yet, so spawn it from the Debug Menu |
-
-How the Hex Harvester plugs into the game, as a pattern for future vehicles:
-
-- **Catalog entry:** a new `MoonPrototypeCatalog.Item` is appended to `MoonPrototypeCatalog.Vehicles`, so it gets its own index.
-- **Base vehicle:** per-index lookups (`AuthoredPrefab`, `StorageKg`, `Heft`, `MoonVehicleAudio.Voice`) are patched to reuse a stock vehicle for physics anchors and sounds.
-- **Model:** `MoonPrototypeModels.Vehicle` is patched so the stock model's renderers are hidden and the ModelKit model is attached in their place. Wheels go on the game's animated wheel transforms, and brushes become `view.rollers`.
+| Mod | Version | Description | |
+|---|---|---|---|
+| **Debug Menu** | 0.1.0 | Testing tools. In-game, open the pause menu (Esc) and a DEBUG panel appears on the right (F7 hides or shows it). | [Download](https://github.com/Wehrum/MSML/raw/main/mods/DebugMenu-0.1.0.zip) |
+| **Hello World** | 0.1.0 | A tiny example mod. It shows a "Hello World mod loaded" label in the top-left corner for 30 seconds after the game starts, and logs a message whenever the main menu opens. | [Download](https://github.com/Wehrum/MSML/raw/main/mods/HelloWorld-0.1.0.zip) |
+| **Hex Harvester** | 0.1.0 | A new vehicle: the Hex Harvester. A six-wheeled harvester with a hex-glass cab, a hex silo tower holding 9,000 kg, and a 25 m truss-mounted sweeper head with five brush pods. It clears a whole hex in one pass. | [Download](https://github.com/Wehrum/MSML/raw/main/mods/HexHarvester-0.1.0.zip) |
 
 ### Creating a mod
 
