@@ -51,7 +51,9 @@ try {
 
     # 1. Build ------------------------------------------------------------------------------------
     Step "Building MSML $Version"
-    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "build-installer.ps1") -Version $Version -SkipBuild:$SkipBuild
+    $buildArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", (Join-Path $PSScriptRoot "build-installer.ps1"), "-Version", $Version)
+    if ($SkipBuild) { $buildArgs += "-SkipBuild" }
+    & powershell @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "Build failed." }
     $release = Join-Path $RepoRoot "artifacts\release"
     $info = Get-Content (Join-Path $release "release.json") -Raw | ConvertFrom-Json
