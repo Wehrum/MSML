@@ -16,7 +16,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.hexharvester";
     public const string Name = "Hex Harvester";
-    public const string Version = "0.4.0";
+    public const string Version = "0.4.1";
 
     internal static ManualLogSource Logger = null!;
 
@@ -26,10 +26,10 @@ public class Plugin : BasePlugin
     public override void Load()
     {
         Logger = Log;
-        var price = Config.Bind("Garage", "Price", 100000, new ConfigDescription(
+        var price = Config.Bind("Garage", "Price", 125000, new ConfigDescription(
             "Price in the garage, in dollars. The Mega Vacuum Rover costs 6,000.",
             new AcceptableValueRange<int>(1000, 250000), ModSettings.Step(1000)));
-        var upgrades = Config.Bind("Garage", "UpgradePriceMultiplier", 3f, new ConfigDescription(
+        var upgrades = Config.Bind("Garage", "UpgradePriceMultiplier", 15f, new ConfigDescription(
             "Upgrade prices are each upgrade's base price times this. The Mega Vacuum Rover's is 3, the Push Sweeper's 0.5.",
             new AcceptableValueRange<float>(0.5f, 20f), ModSettings.Step(0.5)));
 
