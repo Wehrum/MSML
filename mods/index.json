@@ -63,14 +63,14 @@
                  {
                      "id":  "msml.moonsweeperplus",
                      "name":  "MoonSweeper+",
-                     "version":  "0.1.0",
+                     "version":  "0.2.0",
                      "folder":  "MoonSweeperPlus",
-                     "file":  "MoonSweeperPlus-0.1.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.1.0.zip",
-                     "sha256":  "7064680B25434112F55D31F5AD426CFF8CF96F58C0029FE1FEC6EEF9574E5A30",
-                     "bytes":  4044,
+                     "file":  "MoonSweeperPlus-0.2.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.2.0.zip",
+                     "sha256":  "08F76CDAEFF0FC4C2E44ECFA24F207346B3CEE45D518EA526DD565DE6643B051",
+                     "bytes":  5786,
                      "author":  "MSML",
-                     "description":  "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay."
+                     "description":  "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay.\n\nCapsule limit: a moon normally holds at most 10,000 capsules (counting every capsule on belts); at the limit nothing can pack capsules. Raise it up to 100,000 in SETTINGS. More capsules cost frame rate, so raise it gradually. In a crew the host\u0027s limit is used."
                  }
              ]
 }
