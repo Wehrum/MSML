@@ -23,12 +23,12 @@
                  {
                      "id":  "msml.betterbelts",
                      "name":  "Better Belts",
-                     "version":  "0.2.0",
+                     "version":  "0.3.0",
                      "folder":  "BetterBelts",
-                     "file":  "BetterBelts-0.2.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.2.0.zip",
-                     "sha256":  "BD3850E9841D1E0A39214B218A9DCEC772F2CA21EBF92C250BC781364D2CB92D",
-                     "bytes":  1192779
+                     "file":  "BetterBelts-0.3.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.3.0.zip",
+                     "sha256":  "4B05904E76311A557D9E1D0DF935891CC4BF8ABA817910D6DA8C80A84646BF67",
+                     "bytes":  1193782
                  },
                  {
                      "id":  "msml.hexharvester",
