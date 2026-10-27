@@ -1002,5 +1002,16 @@ internal static class BeltPatches
         try { BeltState.AfterCrewBelts(__instance); }
         catch (Exception e) { Log.Error("Mapping capsules after the host's belt update failed: " + e); }
     }
+
+    // The host's periodic correction of the crewmate's belts or capsules: capsules it put back are posed this frame.
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewTruthPart))]
+    [HarmonyPostfix]
+    private static void AfterCrewTruth(MoonWorld __instance, MoonWorld.CrewTruth domain)
+    {
+        if (domain != MoonWorld.CrewTruth.Belts && domain != MoonWorld.CrewTruth.Capsules) return;
+        BeltNetwork.CheckSoon();
+        try { BeltState.AfterCrewBelts(__instance); }
+        catch (Exception e) { Log.Error("Mapping capsules after the host's correction failed: " + e); }
+    }
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewStructures))] [HarmonyPostfix] private static void NetCrewStructures() => BeltNetwork.CheckSoon();
 }

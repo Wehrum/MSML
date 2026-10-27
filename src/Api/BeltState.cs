@@ -138,6 +138,7 @@ internal static class BeltState
         Awaiting.Clear();
         KnownEnds.Clear();
         Riders.Clear();
+        LastPosed.Clear();
         RouteTypes.Clear();
         _crewRiders = null;
         Queues.Clear();
@@ -423,6 +424,8 @@ internal static class BeltState
     /// <summary>After the belts moved: which capsules ride belts whose type poses them, and where.</summary>
     internal static void MapRiders(MoonWorld world)
     {
+        _poseTime = Time.unscaledTime;
+        PruneLastPosed();
         Riders.Clear();
         RouteTypes.Clear();
         foreach (var (type, belts) in ByType)
@@ -601,16 +604,40 @@ internal static class BeltState
     /// <summary>True if the capsule rides a belt whose type poses it.</summary>
     internal static bool Poses(int capsule) => Riders.ContainsKey(capsule);
 
+    // Where each capsule was last posed on a belt, and when. A crewmate's game lifts capsules off their belt for a
+    // moment when the host corrects it (often where a full tube hands capsules to a slower belt): one that hasn't
+    // moved is still drawn as it was rather than popping up out of the tube.
+    private static readonly Dictionary<int, (int Belt, float Distance, BeltType Type, Vector3 At, float Time)> LastPosed = new();
+    private static float _poseTime, _nextPrune;
+    private const float PoseGrace = 3f;
+
     /// <summary>Lets the belt's type change how a riding capsule is drawn.</summary>
     internal static void Pose(MoonDroppedCanister capsule, ref Vector3 position, ref Quaternion rotation)
     {
-        if (capsule == null || !Riders.TryGetValue(capsule.id, out var rider)) return;
+        if (capsule == null) return;
+        var id = capsule.id;
+        if (Riders.TryGetValue(id, out var rider))
+            LastPosed[id] = (rider.Belt, rider.Distance, rider.Type, position, _poseTime);
+        else if (LastPosed.TryGetValue(id, out var last) && _poseTime - last.Time < PoseGrace && VMath.SqrDistance(last.At, position) < 0.25f)
+            rider = (last.Belt, last.Distance, last.Type);
+        else return;
         try { rider.Type.RiderPose!(rider.Belt, rider.Distance, capsule, ref position, ref rotation); }
         catch (Exception e)
         {
             Riders.Clear();
+            LastPosed.Clear();
             Log.Error($"{rider.Type.Name}'s RiderPose failed: {e}");
         }
+    }
+
+    private static void PruneLastPosed()
+    {
+        if (_poseTime < _nextPrune) return;
+        _nextPrune = _poseTime + 2f;
+        List<int>? old = null;
+        foreach (var (id, last) in LastPosed)
+            if (_poseTime - last.Time >= PoseGrace) (old ??= new List<int>()).Add(id);
+        if (old != null) foreach (var id in old) LastPosed.Remove(id);
     }
 
     /// <summary>Moves a rider to a distance along its belt (written straight into the belt's queue).</summary>
