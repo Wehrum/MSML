@@ -120,12 +120,18 @@ $rows = foreach ($m in $mods | Sort-Object Name) {
 $readme = @"
 # Mods
 
-Drop-in mods for [MSML](../README.md). To install one:
+Drop-in mods for [MSML](../README.md). The easiest way to get them is in the game: install MSML (see the
+[main README](../README.md)), then open **MODS**: these mods are listed under **GET MORE MODS**, one click to install.
 
-1. Install MSML first (see the [main README](../README.md)).
-2. Download the mod's ``.zip`` below.
-3. In Moon Sweepers, open **MODS > ADD MOD** and pick the zip (or extract it into ``<game>\Mods\``).
-4. Restart the game (**RESTART TO APPLY**).
+To install one by hand instead:
+
+1. Download the mod's ``.zip`` below.
+2. In Moon Sweepers, open **MODS > ADD MOD** and pick the zip (or extract it into ``<game>\Mods\``).
+3. Restart the game (**RESTART TO APPLY**).
+
+Windows Security sometimes flags a mod zip downloaded in a browser by mistake: the mods are new and their files aren't
+signed, so Windows doesn't know them yet. Installing from the MODS screen avoids that. See
+[If Windows Security flags MSML or a mod](../README.md#if-windows-security-flags-msml-or-a-mod).
 
 | Mod | Version | Description | |
 |---|---|---|---|
@@ -143,7 +149,7 @@ $index = [ordered]@{
         $repoZip = Join-Path $RepoMods $file
         [ordered]@{ id = $m.Id; name = $m.Name; version = "$($m.Version)"; folder = $m.Key; file = $file
             url = "https://raw.githubusercontent.com/$Repo/main/mods/$file"; sha256 = (Get-FileHash $repoZip -Algorithm SHA256).Hash
-            bytes = (Get-Item $repoZip).Length }
+            bytes = (Get-Item $repoZip).Length; author = $m.Author; description = $m.Description }
     })
 }
 $indexJson = $index | ConvertTo-Json -Depth 5

@@ -18,14 +18,23 @@ irm https://github.com/Wehrum/MSML/releases/latest/download/get.ps1 | iex
 
 ### Adding mods
 
-MSML doesn't include any mods. Ready-made ones are in [`mods/`](mods). To add one:
+MSML doesn't include any mods. The easiest way to get them is in the game: in the main menu choose `MODS`, and the official ones you don't have are listed under **GET MORE MODS**. Select one and press **INSTALL**; it loads after a restart.
+
+To add any other mod (or install one by hand):
 - Download the mod's `.zip` (from [`mods/`](mods) or anywhere else)
 - In the main menu choose `MODS > ADD MOD`
 - Select the mod
 
 Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
-**Updates:** the MODS screen checks for updates when you open it (or with **CHECK FOR UPDATES**). Mods with a newer version get an **UPDATE** button (or **UPDATE ALL MODS**); the new version loads after a restart. When MSML itself has a new release, **UPDATE MSML** closes the game, runs the installer in a PowerShell window and starts the game again. The install command above still works too.
+**Updates:** the MODS screen checks for updates when you open it (or with **CHECK FOR UPDATES**). Mods with a newer version get an **UPDATE** button (or **UPDATE ALL MODS**); the new version loads after a restart. When MSML itself has a new release, **UPDATE MSML** downloads it, closes the game, installs it in a PowerShell window and starts the game again. The install command above still works too.
+
+### If Windows Security flags MSML or a mod
+
+Windows Security (Defender) sometimes flags a mod's `.zip` or `.dll` as a virus when it's downloaded in a browser. It's a false alarm: the mods are new and their files aren't signed, so Windows hasn't seen them before and its cloud check plays it safe. To avoid or fix it:
+- **Install and update mods from the MODS screen** (GET MORE MODS / UPDATE). The game downloads them itself (each checked against its SHA-256), which Windows is much less strict about than browser downloads.
+- **Add an exclusion for the game folder**: Windows Security > Virus & threat protection > Manage settings > Exclusions > Add an exclusion > Folder, and choose the Moon Sweepers folder (`...\steamapps\common\Moon Sweepers`; in Steam, right-click the game > Manage > Browse local files). Exclude the folder rather than single files: updates replace the files, and in-game downloads go into that folder too. If a download is blocked, the MODS screen says so, and an update that's blocked leaves the old version in place.
+- **Report the false positive** to Microsoft at https://www.microsoft.com/wdsi/filesubmission (choose "Incorrectly detected as malware"). Once they clear a file it's cleared for everyone.
 
 ### Official mods
 

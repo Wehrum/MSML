@@ -212,7 +212,33 @@ internal static class ModsScreen
         _enabled = ModCatalog.LoadEnabled().Where(k => Find(k) != null).ToList();
         _session ??= new HashSet<string>(ModCatalog.LoadSession(), StringComparer.OrdinalIgnoreCase);
         _loaded ??= LoadedModKeys();
-        if (_selected != null && Find(_selected) == null) _selected = null;
+        if (_selected != null && Find(_selected) == null && Gettable(_selected) == null)
+        {
+            // An official mod just installed from GET MORE MODS: select it as installed.
+            var installed = _selected.StartsWith(GetPrefix) ? Find(_selected[GetPrefix.Length..]) : null;
+            _selected = installed?.Key;
+        }
+    }
+
+    // ---- official mods to install (GET MORE MODS) ------------------------------------------------
+
+    private const string GetPrefix = "get:";
+
+    /// <summary>Official mods that aren't installed (from the last update check).</summary>
+    private static List<Updates.AvailableMod> Gettable() => Updates.AvailableMods.Where(a => Find(a.Folder) == null).ToList();
+
+    private static Updates.AvailableMod? Gettable(string? key) =>
+        key != null && key.StartsWith(GetPrefix) ? Gettable().FirstOrDefault(a => a.Folder.Equals(key[GetPrefix.Length..], StringComparison.OrdinalIgnoreCase)) : null;
+
+    private static void InstallMod(Updates.AvailableMod mod)
+    {
+        if (Updates.Downloading.Contains(mod.Folder)) return;
+        Updates.InstallMod(mod, error =>
+        {
+            if (error != null) { Ask($"Couldn't install {mod.Name}", error, "OK", () => { }, null); return; }
+            Changed.Add(mod.Folder);
+            _selected = mod.Folder;
+        });
     }
 
     /// <summary>Mods (by key) that BepInEx actually loaded a plugin from this session.</summary>
@@ -431,7 +457,7 @@ internal static class ModsScreen
         _checkChip!.text.text = Updates.Status == Updates.State.Checking ? "CHECKING..." : "CHECK FOR UPDATES";
         _updateAllChip!.text.text = $"UPDATE ALL MODS ({modUpdates})";
         _updateAllChip.rect.gameObject.SetActive(modUpdates > 0 && Updates.Downloading.Count == 0);
-        _msmlChip!.text.text = $"UPDATE MSML TO {Updates.MsmlUpdate}";
+        _msmlChip!.text.text = Updates.MsmlDownloading ? "DOWNLOADING MSML..." : $"UPDATE MSML TO {Updates.MsmlUpdate}";
         _msmlChip.rect.gameObject.SetActive(Updates.MsmlUpdate != null);
         LayoutFooter();
     }
@@ -453,11 +479,11 @@ internal static class ModsScreen
 
     private static void ConfirmMsmlUpdate()
     {
-        if (Updates.MsmlUpdate is not { } version) return;
+        if (Updates.MsmlUpdate is not { } version || Updates.MsmlDownloading) return;
         Ask($"Update MSML to {version}?",
-            "Moon Sweepers will close, MSML will update in a PowerShell window (Windows may ask for administrator rights), " +
-            "then the game starts again. Your mods and settings are kept.",
-            "UPDATE", Updates.UpdateMsml, "CANCEL");
+            "MSML downloads the update first. Then Moon Sweepers closes, the update installs in a PowerShell window, " +
+            "and the game starts again. Your mods and settings are kept.",
+            "UPDATE", () => Updates.UpdateMsml(error => Ask("Couldn't update MSML", error, "OK", () => { }, null)), "CANCEL");
     }
 
     private static void FillList(RectTransform content, List<ModInfo> mods, bool enabledColumn, string emptyText)
@@ -466,6 +492,7 @@ internal static class ModsScreen
         Clear(content);
         var width = ColW - 16 - SettingsView.ScrollbarW;
         var y = 8f;
+        var gettable = enabledColumn ? new List<Updates.AvailableMod>() : Gettable();
         foreach (var mod in mods)
         {
             var key = mod.Key;
@@ -506,7 +533,35 @@ internal static class ModsScreen
 
             y += RowH + RowGap;
         }
-        if (mods.Count == 0)
+        // Official mods not installed yet, under the disabled ones: select one to see it and install it.
+        if (gettable.Count > 0)
+        {
+            if (mods.Count > 0) y += 12;
+            var header = kit.Text(content, "GET MORE MODS", 14, y, width, 30, 16, MoonSimpleKit.Faint, true, TextAlignmentOptions.MidlineLeft);
+            header.raycastTarget = false;
+            y += 34;
+            foreach (var get in gettable)
+            {
+                var key = GetPrefix + get.Folder;
+                var selected = key.Equals(_selected, StringComparison.OrdinalIgnoreCase);
+                var row = kit.Rect(content, key, 8, y, width, RowH);
+                var normal = selected ? MoonSimpleKit.PillFill : new Color(MoonSimpleKit.ChipFill.r, MoonSimpleKit.ChipFill.g, MoonSimpleKit.ChipFill.b, MoonSimpleKit.ChipFill.a * 0.6f);
+                var fill = MoonSimpleKit.Sprite9(row, "Fill", MoonSimpleKit.Rounded(false), normal);
+                fill.raycastTarget = true;
+                if (selected) kit.Line(row, 0, 10, 4, RowH - 20, MoonSimpleKit.Orange);
+                var nameText = kit.Text(row, get.Name, 18, 0, width - 18 - 96, RowH, 21, selected ? MoonSimpleKit.Cream : MoonSimpleKit.Faint, false, TextAlignmentOptions.MidlineLeft);
+                nameText.overflowMode = TextOverflowModes.Ellipsis;
+                nameText.raycastTarget = false;
+                var tag = kit.Text(row, Updates.Downloading.Contains(get.Folder) ? "..." : "GET", width - 80, 0, 64, RowH, 15, MoonSimpleKit.Orange, true, TextAlignmentOptions.Center);
+                tag.raycastTarget = false;
+                var hover = fill.gameObject.AddComponent<MoonWorkshopHover>();
+                hover.enter = Act(() => { if (Alive(fill)) fill.color = MoonSimpleKit.PillFill; });
+                hover.exit = Act(() => { if (Alive(fill)) fill.color = normal; });
+                OnClick(fill.gameObject, () => { _selected = key; Refresh(); });
+                y += RowH + RowGap;
+            }
+        }
+        if (mods.Count == 0 && gettable.Count == 0)
         {
             var empty = kit.Text(content, emptyText, 20, 20, ColW - 40, 80, 18, MoonSimpleKit.Dimmed, false, TextAlignmentOptions.TopLeft);
             Wrap(empty);
@@ -517,10 +572,46 @@ internal static class ModsScreen
 
     private static bool Pending(string key) => IsEnabled(key) != _session!.Contains(key) || Changed.Contains(key);
 
+    // An official mod that isn't installed: what it is, and INSTALL (downloaded by the game, then enabled).
+    private static void FillGettableDetails(Updates.AvailableMod get)
+    {
+        var kit = _menu!.kit;
+        var ph = Mathf.Round(DetW * 9f / 16f);
+        var frame = kit.Rect(_details, "Preview", 0, 44, DetW, ph);
+        var maskImage = frame.gameObject.AddComponent<Image>();
+        maskImage.sprite = MoonSimpleKit.Rounded(false);
+        maskImage.type = Image.Type.Sliced;
+        maskImage.color = MoonSimpleKit.ChipFill;
+        kit.Text(frame, Initials(get.Name), 0, 0, DetW, ph, 96, MoonSimpleKit.Dimmed, true, TextAlignmentOptions.Center);
+
+        var y = 44 + ph + 18;
+        var name = kit.Text(_details, get.Name, 0, y, DetW, 44, 34, MoonSimpleKit.Cream, true, TextAlignmentOptions.MidlineLeft);
+        name.overflowMode = TextOverflowModes.Ellipsis;
+        y += 46;
+        var meta = new List<string> { "Version " + get.Version };
+        if (get.Author.Length > 0) meta.Add("by " + get.Author);
+        if (get.Bytes > 0) meta.Add(get.Bytes >= 1048576 ? $"{get.Bytes / 1048576.0:0.0} MB" : $"{Math.Max(1, get.Bytes / 1024)} KB");
+        kit.Text(_details, string.Join("  ·  ", meta), 0, y, DetW, 26, 18, MoonSimpleKit.Faint, false, TextAlignmentOptions.MidlineLeft);
+        y += 30;
+        kit.Text(_details, "OFFICIAL MOD · NOT INSTALLED", 0, y, DetW, 26, 16, MoonSimpleKit.Orange, true, TextAlignmentOptions.MidlineLeft);
+        y += 34;
+
+        var toggleY = ListBottom - HeaderY - 52;
+        var description = get.Description.Length > 0 ? get.Description : "No description.";
+        Wrap(kit.Text(_details, description, 0, y, DetW, toggleY - 16 - y, 20, get.Description.Length > 0 ? MoonSimpleKit.Soft : MoonSimpleKit.Dimmed, false, TextAlignmentOptions.TopLeft));
+
+        var downloading = Updates.Downloading.Contains(get.Folder);
+        var chip = kit.NewChip(_details, downloading ? "DOWNLOADING..." : "INSTALL", 0, toggleY, 52, 20,
+            Act(() => InstallMod(get)), null, null, !downloading);
+        MoonSimpleKit.Size(chip);
+        MoonSimpleKit.Place(chip.rect, 0, toggleY, chip.rect.sizeDelta.x, 52);
+    }
+
     private static void FillDetails()
     {
         var kit = _menu!.kit;
         Clear(_details!);
+        if (Gettable(_selected) is { } get) { FillGettableDetails(get); return; }
         var mod = _selected == null ? null : Find(_selected);
         if (mod == null)
         {

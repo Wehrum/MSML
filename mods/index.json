@@ -8,7 +8,9 @@
                      "file":  "DebugMenu-0.3.0.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/DebugMenu-0.3.0.zip",
                      "sha256":  "046AA629502CA95D8A02D08AD9DCA3F0117295976711BA58D04AB55A5578F055",
-                     "bytes":  2348357
+                     "bytes":  2348357,
+                     "author":  "Moon Sweepers Mods",
+                     "description":  "Testing tools. In-game, open the pause menu (Esc) and a DEBUG panel appears on the right (F7 hides or shows it).\n\nUnlimited money, +$10,000, unlimited suit energy, fly mode, empty or fill your vehicle\u0027s hopper, and spawn any vehicle in front of you, including vehicles added by other mods.\n\nMeant for testing: it changes your save (money, vehicles). Host only: in someone else\u0027s crew it turns itself off, since the host controls money, time and vehicles."
                  },
                  {
                      "id":  "moonsweepmods.helloworld",
@@ -18,7 +20,9 @@
                      "file":  "HelloWorld-0.1.0.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HelloWorld-0.1.0.zip",
                      "sha256":  "97F7FBEDBDCE1789BB860205DC7826A789F24E038F51AB166590053886341D8C",
-                     "bytes":  35560
+                     "bytes":  35560,
+                     "author":  "Moon Sweepers Mods",
+                     "description":  "A tiny example mod. It shows a \"Hello World mod loaded\" label in the top-left corner for 30 seconds after the game starts, and logs a message whenever the main menu opens.\n\nUse it as a starting point for your own mods: copy examples/HelloWorld in the repo and rename it."
                  },
                  {
                      "id":  "msml.betterbelts",
@@ -28,7 +32,9 @@
                      "file":  "BetterBelts-0.3.0.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.3.0.zip",
                      "sha256":  "4B05904E76311A557D9E1D0DF935891CC4BF8ABA817910D6DA8C80A84646BF67",
-                     "bytes":  1193782
+                     "bytes":  1193782,
+                     "author":  "MSML",
+                     "description":  "Pneumatic tubes: glass tubes sunk into the ground that shoot capsules along up to 5x as fast as conveyor belts (10x in SETTINGS).\n\nBuild them with the Pneumatic tube card (Logistics) like belts, up to 90 m in one piece. They follow the ground over bumps and down hills, connect to belts, splitters, mergers and machines (rising out of the ground to meet them), and you can walk and drive over them. The Tube splitter and Tube merger cards build splitters and mergers sunk into the ground, so tube lines join them flush; aim at a tube to build one into it. A tube on its own runs at belt speed; put a Tube booster in the line (aim at a tube to build one into it) and the capsules after it are shot along at full speed. Boosters run on solar power like any machine (you\u0027ll see the blue power beam and hear them hiss). The pressure carries through tubes, splitters and mergers (not belts or machines) and fades after about 80 m, so put the next booster where the tube turns yellow.\n\nThe rings on the tubes show the pressure: green is full speed, yellow is fading, red is belt speed. They glow brighter while you\u0027re building. A colour-blind palette is in SETTINGS, along with the speed, range, prices and power.\n\nTubes never stop: losing a booster or power only slows them to belt speed. Removing a tube deletes the capsules in it. Remove the mod and tubes become plain belts again. Everyone in a crew needs the mod."
                  },
                  {
                      "id":  "msml.hexharvester",
@@ -38,7 +44,9 @@
                      "file":  "HexHarvester-0.5.1.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HexHarvester-0.5.1.zip",
                      "sha256":  "610903FB7B594FB5728DB8E9C4D4211316FDCDF29788458EA9656462AD029CDC",
-                     "bytes":  512207
+                     "bytes":  512207,
+                     "author":  "MSML",
+                     "description":  "A new vehicle, sold in the garage for $100,000: the Hex Harvester. A six-wheeled harvester with a hex-glass cab, a glass hex silo that visibly fills with dust as you clean, and a 25 m truss-mounted sweeper head with five brush pods. It clears a whole hex in one pass.\n\nIt runs on the game\u0027s own vehicle code, so driving, cleaning, the hopper, unloading, upgrades, lights and sounds all work like the other vehicles. Its price and upgrade prices can be changed in SETTINGS. It\u0027s too big for the garage hall, so it\u0027s delivered in front of the garage.\n\nSaves stay safe: if you remove the mod, a bought Hex Harvester just disappears from the garage until the mod is back. Everyone in a crew needs the mod."
                  },
                  {
                      "id":  "msml.moonfixerupper",
@@ -48,7 +56,9 @@
                      "file":  "MoonFixerUpper-0.1.0.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonFixerUpper-0.1.0.zip",
                      "sha256":  "CC79E16387D4A75713934DC5768930D527EA9E5CFBAC64E0503E309B7ABEC3B1",
-                     "bytes":  4174
+                     "bytes":  4174,
+                     "author":  "MSML",
+                     "description":  "Fixes for bugs in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\n\"Could not pack a capsule\": a moon can hold at most 10,000 capsules, counting every capsule on a belt. Big belt networks reach that, and then every stone press and pressure chamber stops, all belts back up, and the factory stays frozen for good. With the fix, processors can still pack their product at the limit (they only turn capsules they\u0027ve taken in into new ones), so the belts start moving again. Works on existing saves; only the host needs it in multiplayer."
                  },
                  {
                      "id":  "msml.moonsweeperplus",
@@ -58,7 +68,9 @@
                      "file":  "MoonSweeperPlus-0.1.0.zip",
                      "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.1.0.zip",
                      "sha256":  "7064680B25434112F55D31F5AD426CFF8CF96F58C0029FE1FEC6EEF9574E5A30",
-                     "bytes":  4044
+                     "bytes":  4044,
+                     "author":  "MSML",
+                     "description":  "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay."
                  }
              ]
 }

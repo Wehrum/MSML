@@ -68,7 +68,13 @@ internal static class ModActions
             }
             else if (ext == ".zip")
             {
-                ZipFile.ExtractToDirectory(path, staging);
+                try { ZipFile.ExtractToDirectory(path, staging); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { throw Blocked(Path.GetFileName(path), e); }
+                // Every DLL in the zip must have arrived: antivirus removes files as they're written.
+                using (var zip = ZipFile.OpenRead(path))
+                    foreach (var entry in zip.Entries)
+                        if (entry.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) && !File.Exists(Path.Combine(staging, entry.FullName)))
+                            throw Blocked(entry.Name, null);
                 // A zip with a single top-level folder: that folder is the mod.
                 var entries = Directory.GetFileSystemEntries(staging);
                 if (entries.Length == 1 && Directory.Exists(entries[0]))
@@ -96,8 +102,29 @@ internal static class ModActions
 
             var target = Path.Combine(mods, key);
             var replaced = Directory.Exists(target);
-            if (replaced) Directory.Delete(target, true);
-            Directory.Move(staging, target);
+            // The old copy is set aside (not deleted) until the new one is in place: if moving it in fails (antivirus
+            // often holds new files for a moment while it scans them), the old one goes back.
+            var backup = Path.Combine(mods, ".old-" + key + "-" + Guid.NewGuid().ToString("N"));
+            if (replaced) MoveWithRetry(target, backup);
+            try
+            {
+                MoveWithRetry(staging, target);
+                if (!Directory.EnumerateFiles(target, "*.dll", SearchOption.AllDirectories).Any()) throw Blocked(key, null);
+            }
+            catch
+            {
+                try
+                {
+                    if (replaced && Directory.Exists(backup))
+                    {
+                        if (Directory.Exists(target)) Directory.Delete(target, true);
+                        MoveWithRetry(backup, target);
+                    }
+                }
+                catch (Exception e) { Plugin.Logger.LogError($"Putting {key} back failed: {e.Message}"); }
+                throw;
+            }
+            if (replaced) try { Directory.Delete(backup, true); } catch (Exception e) { Plugin.Logger.LogWarning($"Couldn't remove the old copy of {key}: {e.Message}"); }
 
             if (enable)
             {
@@ -115,6 +142,25 @@ internal static class ModActions
             if (Directory.Exists(staging)) Directory.Delete(staging, true);
         }
     }
+
+    // Antivirus scanning a new file holds it for a moment: moves are tried a few times.
+    private static void MoveWithRetry(string from, string to)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { Directory.Move(from, to); return; }
+            catch (Exception e) when (attempt < 6 && e is IOException or UnauthorizedAccessException) { System.Threading.Thread.Sleep(250 * attempt); }
+        }
+    }
+
+    /// <summary>What to tell the player when antivirus (usually Windows Security) removed or blocked a mod's file.</summary>
+    internal static string AntivirusHint =>
+        "Windows Security (or another antivirus) probably blocked it: mod files are new and unsigned, so they can be " +
+        "flagged by mistake. Add an exclusion for the game folder (" + BepInEx.Paths.GameRootPath + ") in Windows Security > " +
+        "Virus & threat protection > Manage settings > Exclusions, then try again.";
+
+    private static Exception Blocked(string file, Exception? cause) =>
+        new InvalidOperationException($"{file} couldn't be written or was removed after downloading. {AntivirusHint}", cause);
 
     private static string SafeName(string name)
     {
