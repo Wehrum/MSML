@@ -5,6 +5,8 @@
 //     seconds  how long each phase measures (default 10)
 //     ab       also measure with the mods' belt/junction looks hidden, and with capsule posing off, then normal again
 //     base     teleport to the middle of the moon's belts first
+//     walk     measure while coming up to where the player stands from 400 m away (belts and their looks streaming
+//              in, as when walking or driving up to them); the player ends where it started
 //     novsync  turn vsync off while measuring (frame times are then the real cost, not rounded up to the screen's
 //              refresh), put back after
 // Inclusive times: a method's time includes what it calls (e.g. MoonWorld.Update includes the belt hooks it runs).

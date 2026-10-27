@@ -38,7 +38,7 @@ internal static class ScriptHost
     private static Stack<IEnumerator>? _coroutine;
     private static float _waitUntil;
     private static Func<bool>? _waitFor;
-    private static float _deadline;
+    private static float _started;
     private static string? _finished;
 
     public static bool Busy => _running != null;
@@ -80,6 +80,17 @@ internal static class ScriptHost
 
     public static string List() =>
         Loaded.Count == 0 ? "no scripts loaded" : string.Join("\n", Loaded.Values.Select(c => $"{c.Name}: {c.Describe()}"));
+
+    /// <summary>Ends the running script now (its cleanups run as when it finishes).</summary>
+    public static void Stop()
+    {
+        if (_running == null) return;
+        _running.Log("STOPPED (dev.ps1 stop)");
+        _coroutine?.Clear();
+        _waitUntil = 0;
+        _waitFor = null;
+        Step();
+    }
 
     /// <summary>Per-frame work: script hooks, and the running coroutine.</summary>
     public static void Tick()
@@ -170,7 +181,7 @@ internal static class ScriptHost
         _coroutine.Push(iterator);
         _waitUntil = 0;
         _waitFor = null;
-        _deadline = Time.unscaledTime + ctx.Timeout;
+        _started = Time.unscaledTime;
         ctx.BeginCapture();
         Step();
         // Finished without waiting: return its output now rather than with the next command.
@@ -182,7 +193,8 @@ internal static class ScriptHost
         var ctx = _running!;
         try
         {
-            if (Time.unscaledTime > _deadline) throw new TimeoutException($"Script ran longer than {ctx.Timeout} s (set ctx.Timeout).");
+            // Timeout counts from the start, as the script last set it (it's usually set in the script's first step).
+            if (Time.unscaledTime > _started + ctx.Timeout) throw new TimeoutException($"Script ran longer than {ctx.Timeout} s (set ctx.Timeout).");
             if (Time.unscaledTime < _waitUntil) return;
             if (_waitFor != null && !_waitFor()) return;
             _waitFor = null;
@@ -206,7 +218,9 @@ internal static class ScriptHost
         }
         catch (Exception e)
         {
+            // Failed or timed out: it ends here (left on the stack, it would fail again every frame and never end).
             ctx.Log("EXCEPTION: " + e);
+            _coroutine?.Clear();
         }
         if (_coroutine!.Count > 0 && ctx.Alive) return;
         ctx.EndCapture();

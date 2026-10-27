@@ -42,7 +42,8 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 - **Lifetime:** `ctx.Harmony` patches, `ctx.OnUpdate(...)` hooks and `ctx.OnUnload(...)` cleanups are undone when the
   same script runs again (or `dev.ps1 "unload name"`), so scripts can be edited and rerun freely. An iterator script's
   are also undone as soon as it ends (finished, failed or timed out), so nothing it faked is left behind in the game;
-  set `ctx.KeepLoaded = true` for one that should leave its hooks running.
+  set `ctx.KeepLoaded = true` for one that should leave its hooks running. `dev.ps1 stop` ends a running script now
+  (other commands wait for it to finish).
 - **Helpers** ([Dev.cs](../DevHarness/Dev.cs)): `Player`, `World`, `Equipment`, `Position`, `Money`,
   `Find<T>()`, `FindAll<T>()`, `Items<T>(il2cppCollection)` (so LINQ works on game lists and dictionaries),
   `Get("find:Type.member")`, `Dump(obj)`, `Describe(obj)`, `Teleport`, `Ahead(m)`, `Ground(p)`, `VehicleIndex(name)`,
@@ -61,6 +62,11 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `selftest.cs` | Checks the script host end to end (hooks, patches, log capture, spawn/board/drive). |
 | `snap-test.cs` | Belt snapping through the build tool: free drawing, from a tube's end, sunk tube junction mouths, a machine's input. Builds nothing. |
 | `crew-sync-test.cs` | What crewmates rely on: typed belts found by their ends, Better Belts' booster-power message read back onto the same boosters. |
+| `tube-scale-test.cs` | Better Belts at scale (throwaway save): `build [lines] [quick] [keep]` lays a field of boosted tube lines (10 pieces each) on the flattest ground nearby and measures frames, pressure and drawing; `remove`; `convert` / `revert` turns every plain belt into tubes. Progress in `BepInEx\devshots\tube-scale-progress.txt`. |
+| `capsule-test.cs` | Real capsules through tube splitters / mergers (throwaway save): the busiest plain ones become tube ones for a while; throughput, speeds, stopped capsules and capsules jumping where they're drawn, before and after. |
+| `placement-cost.cs` | Times building and removing a tube next to a `tube-scale-test` field (the call, and the worst frame after). |
+| `slope-test.cs` | A tube down ground steeper than belts may go (45 degrees) is allowed while a plain belt isn't. |
+| `stream-in.cs` | Teleports away and back, and reports the worst frames while belts stream back in. |
 | `patchtest.cs` | Installs a runtime Harmony patch (`install`), for checking patching on its own. |
 | `garage-probe.cs` | Lists garage offers, prices, the catalog and owned vehicles. |
 | `vehicle-shop-test.cs` | Modded vehicle in the garage: `buy` (money, buy, save, screenshot), `check`, `drive`. |

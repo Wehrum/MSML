@@ -32,7 +32,16 @@ internal static class BeltNetwork
     /// <summary>Bumped whenever the machine routes change.</summary>
     internal static int RoutesVersion { get; private set; }
 
-    /// <summary>Forgets everything (something was built, removed or moved).</summary>
+    // What the network looked like when last checked: every belt's ends, every structure's place and kind. A change is
+    // found by comparing with it, and only answers about belts near what changed are forgotten: forgetting everything
+    // made the next questions about every belt ask the game again (with a few thousand tubes, about half a second).
+    private static readonly Dictionary<int, (Vector3 Start, Vector3 End)> BeltEnds = new();
+    private static readonly Dictionary<int, (Vector3 Position, int Kind)> Structures = new();
+    private static bool _snapshot, _dirty;
+    private const float EndReach = 1f;                      // belt ends this close are joined
+    private const float StructureReach = PortSearch + 2f;   // a structure's ports are within this of it
+
+    /// <summary>Forgets everything (the world was unloaded).</summary>
     internal static void Invalidate()
     {
         NextCache.Clear();
@@ -40,10 +49,20 @@ internal static class BeltNetwork
         StructureCache.Clear();
         PathCache.Clear();
         JunctionRoutes.Clear();
+        BeltEnds.Clear();
+        Structures.Clear();
+        _snapshot = false;
         _routes = null;
         _nextCheck = 0f;
         Version++;
         RoutesVersion++;
+    }
+
+    /// <summary>Something was built, removed or moved: find out what at the next question.</summary>
+    internal static void Changed()
+    {
+        _dirty = true;
+        _nextCheck = 0f;
     }
 
     /// <summary>Checks for changes at the next question (rather than up to a quarter second later).</summary>
@@ -60,13 +79,122 @@ internal static class BeltNetwork
         var routeCount = w.machinePaths.Count;
         if (routeCount != _routeCount) { _routeCount = routeCount; _routes = null; RoutesVersion++; }
         var signature = (w.conveyors.Count, w.depots.Count, w.nextConveyorId, w.nextDepotId);
-        if (signature != _signature)
+        if (signature != _signature || _dirty || !_snapshot)
         {
             _signature = signature;
-            Invalidate();
-            _nextCheck = now + CheckEvery;
+            _dirty = false;
+            Refresh(w);
         }
         return w;
+    }
+
+    // Compares the network with the snapshot and forgets the answers about belts near whatever changed.
+    private static void Refresh(MoonWorld w)
+    {
+        var first = !_snapshot;
+        var nearBelts = new List<Vector3>();        // ends of belts that appeared, went or moved
+        var nearStructures = new List<Vector3>();   // structures that appeared or went
+        var changedStructures = new List<int>();
+
+        var seen = new HashSet<int>();
+        foreach (var entry in w.conveyors)
+        {
+            var c = entry.Value;
+            if (c == null) continue;
+            var id = entry.Key;
+            seen.Add(id);
+            Vector3 start = c.start, end = c.end;
+            if (BeltEnds.TryGetValue(id, out var old))
+            {
+                if (VMath.SqrDistance(old.Start, start) < 1e-4f && VMath.SqrDistance(old.End, end) < 1e-4f) continue;
+                nearBelts.Add(old.Start); nearBelts.Add(old.End);
+                Forget(id);
+            }
+            BeltEnds[id] = (start, end);
+            nearBelts.Add(start); nearBelts.Add(end);
+        }
+        foreach (var id in new List<int>(BeltEnds.Keys))
+        {
+            if (seen.Contains(id)) continue;
+            var old = BeltEnds[id];
+            nearBelts.Add(old.Start); nearBelts.Add(old.End);
+            BeltEnds.Remove(id);
+            Forget(id);
+        }
+
+        var seenStructures = new HashSet<int>();
+        foreach (var entry in w.depots)
+        {
+            var d = entry.Value;
+            if (d == null) continue;
+            var id = entry.Key;
+            seenStructures.Add(id);
+            var position = new Vector3(d.x, d.y, d.z);
+            if (Structures.TryGetValue(id, out var old) && old.Kind == d.kind && VMath.SqrDistance(old.Position, position) < 1e-4f) continue;
+            if (Structures.ContainsKey(id)) nearStructures.Add(old.Position);
+            Structures[id] = (position, d.kind);
+            nearStructures.Add(position);
+            changedStructures.Add(id);
+        }
+        foreach (var id in new List<int>(Structures.Keys))
+        {
+            if (seenStructures.Contains(id)) continue;
+            nearStructures.Add(Structures[id].Position);
+            Structures.Remove(id);
+            changedStructures.Add(id);
+        }
+
+        _snapshot = true;
+        if (first) return;   // nothing was cached before the first look
+        if (nearBelts.Count == 0 && nearStructures.Count == 0) return;
+
+        // Belts through a splitter or merger are joined across it: a change at one of its ports reaches its other side.
+        foreach (var (_, (position, kind)) in Structures)
+            if (Belts.JunctionKinds.Contains(kind) && AnyNear(position, nearBelts, StructureReach)) nearStructures.Add(position);
+        foreach (var id in changedStructures) JunctionRoutes.Remove(id);
+        if (changedStructures.Count > 0) { _routes = null; RoutesVersion++; }
+
+        foreach (var (id, (start, end)) in BeltEnds)
+            if (AnyNear(start, nearBelts, EndReach) || AnyNear(end, nearBelts, EndReach) ||
+                AnyNear(start, nearStructures, StructureReach) || AnyNear(end, nearStructures, StructureReach))
+                Forget(id);
+        Version++;
+    }
+
+    private static bool AnyNear(Vector3 point, List<Vector3> points, float reach)
+    {
+        var r2 = reach * reach;
+        foreach (var p in points) if (VMath.SqrDistance(point, p) < r2) return true;
+        return false;
+    }
+
+    /// <summary>A belt's ends as last seen (no call into the game), if known.</summary>
+    internal static bool TryEnds(int belt, out Vector3 start, out Vector3 end)
+    {
+        if (BeltEnds.TryGetValue(belt, out var ends)) { start = ends.Start; end = ends.End; return true; }
+        start = end = default;
+        return false;
+    }
+
+    /// <summary>Whether the belt (or a route, negative) exists, from what was last seen (no call into the game for belts).</summary>
+    internal static bool Has(int belt)
+    {
+        var w = Fresh();
+        if (w == null) return false;
+        if (belt > 0) return BeltEnds.ContainsKey(belt);
+        return w.machinePaths.ContainsKey(belt);   // routes: few
+    }
+
+    // Forgets every answer about one belt.
+    private static void Forget(int belt)
+    {
+        NextCache.Remove((belt, true));
+        NextCache.Remove((belt, false));
+        ThroughCache.Remove((belt, true));
+        ThroughCache.Remove((belt, false));
+        StructureCache.Remove((belt, true));
+        StructureCache.Remove((belt, false));
+        PathCache.Remove(belt);
     }
 
     internal static List<int> Next(int belt, bool downstream)

@@ -393,7 +393,27 @@ public static class BeltLooks
     }
 
     // Property ids (passing names marshals a new string into the game every call).
-    private static int _baseColorId, _emissionId;
+    private static int _baseColorId, _emissionId, _baseMapId, _emissionMapId;
+
+    /// <summary>
+    /// Colours parts of one renderer using a <see cref="Glow"/> material, each its own colour: the mesh's u coordinate
+    /// picks a pixel of <paramref name="strip"/> (a texture <paramref name="colors"/> wide and 1 high, point-filtered),
+    /// which is set to the colours. E.g. many rings in one mesh, each showing its own colour, instead of a renderer each.
+    /// </summary>
+    public static void SetGlowColors(Renderer renderer, Texture2D strip, Color[] colors, float intensity = 2f)
+    {
+        _block ??= new MaterialPropertyBlock();
+        if (_baseColorId == 0) { _baseColorId = Shader.PropertyToID("_BaseColor"); _emissionId = Shader.PropertyToID("_EmissionColor"); }
+        if (_baseMapId == 0) { _baseMapId = Shader.PropertyToID("_BaseMap"); _emissionMapId = Shader.PropertyToID("_EmissionMap"); }
+        strip.SetPixels(new Il2CppStructArray<Color>(colors));
+        strip.Apply(false);
+        _block.Clear();
+        _block.SetColor(_baseColorId, Color.white);
+        _block.SetColor(_emissionId, Color.white * intensity);
+        _block.SetTexture(_baseMapId, strip);
+        _block.SetTexture(_emissionMapId, strip);
+        renderer.SetPropertyBlock(_block);
+    }
 
     /// <summary>
     /// One of the game's conveyor materials by name, e.g. "MC - Graphite chassis", "MC - Brushed joint hardware",

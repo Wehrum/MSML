@@ -122,7 +122,7 @@ public class Harness : MonoBehaviour
     private void Update()
     {
         ScriptHost.Tick();
-        if (_batch != null) { ContinueBatch(); return; }
+        if (_batch != null) { CheckStop(); ContinueBatch(); return; }
         if (Time.realtimeSinceStartup < _next) return;
         _next = Time.realtimeSinceStartup + 0.1f;
         if (!File.Exists(_inFile)) return;
@@ -140,6 +140,24 @@ public class Harness : MonoBehaviour
     // Commands run in order; a script that waits (a coroutine) pauses the batch until it finishes.
     private readonly Queue<string> _pending = new();
     private StringBuilder? _batch;
+    private float _nextStopCheck;
+
+    // While a script runs, other commands wait; "stop" doesn't: it ends the running script now.
+    private void CheckStop()
+    {
+        if (!ScriptHost.Busy || Time.realtimeSinceStartup < _nextStopCheck) return;
+        _nextStopCheck = Time.realtimeSinceStartup + 0.25f;
+        if (!File.Exists(_inFile)) return;
+        try
+        {
+            var lines = File.ReadAllLines(_inFile);
+            if (!lines.Any(l => l.Trim() == "stop")) return;
+            File.WriteAllLines(_inFile, lines.Where(l => l.Trim() != "stop"));
+            if (!File.ReadAllLines(_inFile).Any(l => l.Trim().Length > 0)) File.Delete(_inFile);
+        }
+        catch (IOException) { return; }
+        ScriptHost.Stop();
+    }
 
     private void ContinueBatch()
     {

@@ -5,7 +5,7 @@
     <ModKind>LoaderPlugin</ModKind>
     <AssemblyName>MSML.Api</AssemblyName>
     <RootNamespace>MSML</RootNamespace>
-    <Version>0.7.0</Version>
+    <Version>0.8.0</Version>
     <!-- Fixed, so mods built against the API don't change (and re-release) every time the API's version does.
          The real version is in the file/product version and Msml.ApiVersion. -->
     <AssemblyVersion>1.0.0.0</AssemblyVersion>

@@ -47,7 +47,7 @@ internal static class BeltState
 
     private static MoonWorld? _world;
     private static bool _changed, _save, _broadcast, _restyleAll;
-    private static float _nextReconcile, _nextBroadcast, _nextSync;
+    private static float _nextReconcile, _nextBroadcast;
     private static int _beltCount = -1;
     private static bool _handlersAdded;
 
@@ -139,8 +139,11 @@ internal static class BeltState
         KnownEnds.Clear();
         Riders.Clear();
         Queues.Clear();
-        MissingFrame.Clear();
+        Missing.Clear();
         ViewSeen.Clear();
+        StyleQueue.Clear();
+        NextFarSync.Clear();
+        Queued.Clear();
         BeltNetwork.Invalidate();
         foreach (var belt in Styled.Keys.ToList()) DropStyle(belt);
         HiddenViews.Clear();
@@ -181,6 +184,42 @@ internal static class BeltState
         if (!Styled.TryGetValue(belt, out var parts)) return;
         Styled.Remove(belt);
         if (parts != null && !parts.WasCollected) UnityEngine.Object.Destroy(parts);
+    }
+
+    // Views the game spawns (streaming in as the player moves) get their look over the next frames, a couple of
+    // milliseconds' worth each frame: building the looks of many tubes in one frame was a hitch. Their game belt is
+    // hidden straight away (no plain belt flashes up).
+    private static readonly List<int> StyleQueue = new();
+    private static readonly HashSet<int> Queued = new();
+    private const double StyleBudgetMs = 2.0;
+
+    internal static void RestyleSoon(int belt)
+    {
+        if (TypeOf(belt) is not { Style: not null } type) { Restyle(belt); return; }
+        try
+        {
+            DropStyle(belt);
+            var view = Belts.ViewOf(belt);
+            if (view == null) return;
+            HideGameBelt(belt, view, type.HideBelt);
+            SetPassThrough(view, type.PassThrough, type.ColliderTop);
+        }
+        catch (Exception e) { Log.Error($"Restyling belt {belt} failed: {e}"); return; }
+        if (Queued.Add(belt)) StyleQueue.Add(belt);
+    }
+
+    private static void StyleQueued()
+    {
+        if (StyleQueue.Count == 0) return;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var done = 0;
+        while (done < StyleQueue.Count && (done == 0 || watch.Elapsed.TotalMilliseconds < StyleBudgetMs))
+        {
+            var belt = StyleQueue[done++];
+            Queued.Remove(belt);
+            if (!Styled.ContainsKey(belt)) Restyle(belt);   // unless restyled meanwhile
+        }
+        StyleQueue.RemoveRange(0, done);
     }
 
     /// <summary>Gives a removed belt's parts to the game's dismantle effect (which destroys them when done).</summary>
@@ -254,23 +293,49 @@ internal static class BeltState
     private static readonly Dictionary<int, IntPtr> ViewSeen = new();
     private static int _deepCursor;
     private const int DeepPerSync = 12;
+    private static List<int> _syncBelts = new();
+    private static int _syncCursor;
+    private const float FarSync = 200f;
+    private static readonly Dictionary<int, float> NextFarSync = new();
 
-    private static void SyncStyles(bool building)
+    // Keeps each look in step with its belt's view, a slice of the belts each frame (all of them every 'period'
+    // seconds): doing them all at once was a few calls into the game per belt in one frame, a hitch with thousands.
+    private static void SyncStyles(bool building, float period)
     {
-        var belts = Styled.Keys.ToList();
-        var deepFrom = belts.Count == 0 ? 0 : _deepCursor % belts.Count;
-        _deepCursor = deepFrom + DeepPerSync;
-        for (var i = 0; i < belts.Count; i++)
+        if (_syncCursor >= _syncBelts.Count)
         {
-            var belt = belts[i];
-            var parts = Styled[belt];
+            // A new round.
+            _syncBelts = Styled.Keys.ToList();
+            _syncCursor = 0;
+            _deepCursor = _syncBelts.Count == 0 ? 0 : (_deepCursor + DeepPerSync) % _syncBelts.Count;
+            if (!building) SyncPassThrough();
+            if (_syncBelts.Count == 0) return;
+        }
+        var count = _syncBelts.Count;
+        var slice = Math.Max(32, (int)Math.Ceiling(count * Math.Min(1f, Time.unscaledDeltaTime / period)));
+        var end = Math.Min(count, _syncCursor + slice);
+        // Belts far from the camera are checked less often (a few calls into the game each, every round, for
+        // thousands of belts left a lot of garbage behind).
+        var now = Time.unscaledTime;
+        var camera = Camera.main;
+        var eye = camera != null ? camera.transform.position : default;
+        for (var i = _syncCursor; i < end; i++)
+        {
+            var belt = _syncBelts[i];
+            if (!Styled.TryGetValue(belt, out var parts)) continue;
+            if (camera != null && !building && BeltNetwork.TryEnds(belt, out var a, out var b) &&
+                VMath.SqrDistance(VMath.Lerp(a, b, 0.5f), eye) > FarSync * FarSync)
+            {
+                if (NextFarSync.TryGetValue(belt, out var next) && now < next) continue;
+                NextFarSync[belt] = now + 2f;
+            }
             var view = Belts.ViewOf(belt);
             var type = TypeOf(belt);
             if (parts == null || parts.WasCollected || view == null || type?.Style == null) { DropStyle(belt); ViewSeen.Remove(belt); continue; }
             // The game hides a belt while previewing a change to it: only while building.
             var shown = view.activeInHierarchy && !(building && GameHidden(belt));
             if (parts.activeSelf != shown) parts.SetActive(shown);
-            var deep = (i - deepFrom + belts.Count) % belts.Count < DeepPerSync;
+            var deep = (i - _deepCursor + count) % count < DeepPerSync;
             if (!deep && ViewSeen.TryGetValue(belt, out var seen) && seen == view.Pointer) continue;
             ViewSeen[belt] = view.Pointer;
             if (type.HideBelt)
@@ -278,8 +343,12 @@ internal static class BeltState
                     if (r.enabled) { HideGameBelt(belt, view, true); break; }
             if (type.PassThrough) SetPassThrough(view, true, type.ColliderTop);
         }
-        // Pass-through belts without a look of their own.
-        if (building) return;
+        _syncCursor = end;
+    }
+
+    // Pass-through belts without a look of their own.
+    private static void SyncPassThrough()
+    {
         foreach (var (type, typed) in ByType)
         {
             if (!type.PassThrough || type.Style != null) continue;
@@ -385,12 +454,13 @@ internal static class BeltState
     // Each belt's capsule queue, looked up from the game at most once a second (the list object stays the same while
     // the belt exists; holding it keeps it alive, so a replaced one is only stale until the next refresh). Read
     // directly from memory every frame: asking the game every frame left garbage on its heap. The game only makes a
-    // queue when the first capsule arrives, so a belt without one is asked about again each frame (else the first
-    // capsules through a new tube, splitter or merger weren't posed, popping up out of the tube).
+    // queue when the first capsule arrives, so belts without one are asked about again whenever the number of queues
+    // changes (else the first capsules through a new tube, splitter or merger weren't posed, popping up out of the
+    // tube); asking about every empty belt every frame cost a lot with thousands of them.
     private static readonly Dictionary<int, Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>>> Queues = new();
-    private static readonly Dictionary<int, int> MissingFrame = new();
+    private static readonly HashSet<int> Missing = new();
     private static float _queuesUntil;
-    private static int _queuesVersion = -1;
+    private static int _queuesVersion = -1, _queueCountFrame = -1, _queueCount = -1;
 
     private static Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>>? QueueOf(MoonWorld world, int belt)
     {
@@ -398,16 +468,21 @@ internal static class BeltState
         if (now >= _queuesUntil || _queuesVersion != BeltNetwork.Version)
         {
             Queues.Clear();
-            MissingFrame.Clear();
+            Missing.Clear();
             _queuesUntil = now + 1f;
             _queuesVersion = BeltNetwork.Version;
         }
-        if (Queues.TryGetValue(belt, out var queue)) return queue;
-        var frame = Time.frameCount;
-        if (MissingFrame.TryGetValue(belt, out var checkedAt) && checkedAt == frame) return null;
         var queues = world.beltQueues;
-        if (!queues.ContainsKey(belt)) { MissingFrame[belt] = frame; return null; }
-        MissingFrame.Remove(belt);
+        var frame = Time.frameCount;
+        if (frame != _queueCountFrame)
+        {
+            _queueCountFrame = frame;
+            var count = queues.Count;
+            if (count != _queueCount) { _queueCount = count; Missing.Clear(); }
+        }
+        if (Queues.TryGetValue(belt, out var queue)) return queue;
+        if (Missing.Contains(belt)) return null;
+        if (!queues.ContainsKey(belt)) { Missing.Add(belt); return null; }
         return Queues[belt] = queues[belt];
     }
 
@@ -484,12 +559,8 @@ internal static class BeltState
         RehideAll();
         var now = Time.unscaledTime;
 
-        if (now >= _nextSync)
-        {
-            var building = BeltPatches.Building;
-            _nextSync = now + (building ? 0.1f : 0.3f);
-            SyncStyles(building);
-        }
+        SyncStyles(BeltPatches.Building, BeltPatches.Building ? 0.1f : 0.3f);
+        StyleQueued();
         if (now >= _nextReconcile)
         {
             _nextReconcile = now + 0.5f;
@@ -543,7 +614,7 @@ internal static class BeltState
 
         foreach (var belt in Typed.Keys.ToList())
         {
-            if (world.conveyors.ContainsKey(belt)) { MissingSince.Remove(belt); continue; }
+            if (BeltNetwork.Has(belt)) { MissingSince.Remove(belt); continue; }
             if (!MissingSince.TryGetValue(belt, out var since))
             {
                 MissingSince[belt] = now;
@@ -555,7 +626,7 @@ internal static class BeltState
             if (now - since > MissingGrace) Forget(belt);
         }
         foreach (var belt in Speeds.Keys.ToList())
-            if (!Belts.Exists(belt)) Speeds.Remove(belt);
+            if (!BeltNetwork.Has(belt)) Speeds.Remove(belt);
         foreach (var (belt, p) in Pending.ToList())
             if (now - p.At > PendingGrace) Pending.Remove(belt);
         MatchAwaiting(world, now);

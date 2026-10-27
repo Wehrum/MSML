@@ -11,8 +11,12 @@ namespace MSML;
 /// </summary>
 public sealed class Puffs
 {
-    private const float VisibleDistance = 120f;
+    private const float VisibleDistance = 70f;
+    // At most this many streams puff at once (the nearest): coming up to many boosters at once made each set itself
+    // up and redraw every frame together.
+    private const int MaxActive = 32;
     private static readonly List<Puffs> All = new();
+    private static readonly List<(float Distance, Puffs Puffs)> Candidates = new();
     private static Material? _material;
     private static bool _ticking;
     private static readonly System.Random Random = new();
@@ -71,11 +75,28 @@ public sealed class Puffs
             eye = t.position; right = t.right; up = t.up;
         }
         var now = Time.time;
+        // The nearest streams in range may puff; the rest stay hidden.
+        Candidates.Clear();
         for (var i = All.Count - 1; i >= 0; i--)
         {
             var p = All[i];
             if (p._parent == null || p._parent.WasCollected) { p.Dispose(); All.RemoveAt(i); continue; }
-            p.Tick(camera != null, eye, right, up, dt, now);
+            if (camera != null && p._nextLook >= 0f)
+            {
+                var d = VMath.SqrDistance(eye, p._origin);
+                if (d < VisibleDistance * VisibleDistance) Candidates.Add((d, p));
+            }
+        }
+        var limit = float.MaxValue;
+        if (Candidates.Count > MaxActive)
+        {
+            Candidates.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+            limit = Candidates[MaxActive - 1].Distance;
+        }
+        foreach (var p in All)
+        {
+            var allowed = p._nextLook < 0f || camera == null || VMath.SqrDistance(eye, p._origin) <= limit;
+            p.Tick(camera != null, eye, right, up, dt, now, allowed);
         }
     }
 
@@ -85,17 +106,19 @@ public sealed class Puffs
     private bool _parentShown, _shown;
     private float _nextLook = -1f;
 
-    private void Tick(bool hasCamera, Vector3 eye, Vector3 right, Vector3 up, float dt, float now)
+    private void Tick(bool hasCamera, Vector3 eye, Vector3 right, Vector3 up, float dt, float now, bool allowed)
     {
         if (now >= _nextLook || _nextLook < 0f)
         {
-            _nextLook = now + 0.25f;
+            // Far away (out of sight for a while yet): looked up less often.
+            var far = _nextLook >= 0f && (!hasCamera || VMath.SqrDistance(eye, _origin) > (VisibleDistance + 40f) * (VisibleDistance + 40f));
+            _nextLook = now + (far ? 2f : 0.25f);
             _origin = _parent.TransformPoint(_localPosition);
             _direction = _parent.TransformDirection(_localDirection);
             _parentShown = _parent.gameObject.activeInHierarchy;
         }
         var origin = _origin;
-        var near = hasCamera && VMath.SqrDistance(eye, origin) < VisibleDistance * VisibleDistance;
+        var near = allowed && hasCamera && VMath.SqrDistance(eye, origin) < VisibleDistance * VisibleDistance;
         if (!near || !_parentShown)
         {
             if (_shown) Hide();

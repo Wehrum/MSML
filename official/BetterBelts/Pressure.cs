@@ -63,13 +63,25 @@ internal static class Pressure
     public static void Dirty()
     {
         _dirty = true;
-        _recolor = true;
+        Lengths.Clear();
+        Middles.Clear();
         Outlets.Clear();
         foreach (var booster in LastWhoosh.Keys.ToList()) if (!Belts.Exists(booster)) { LastWhoosh.Remove(booster); Inside.Remove(booster); }
     }
 
+    // Each piece's length and each booster's middle, kept until the network changes (asking the game each solve was a
+    // call per piece).
+    private static readonly Dictionary<int, float> Lengths = new();
+    private static readonly Dictionary<int, Vector3> Middles = new();
+    private static int _settingsKey;
+
+    private static float LengthOf(int belt)
+    {
+        if (!Lengths.TryGetValue(belt, out var l)) Lengths[belt] = l = Belts.PathOf(belt)?.Length ?? 0f;
+        return l;
+    }
+
     // The rings only need recolouring when the pressure they show changed.
-    private static bool _recolor = true;
     private static int _colorKey;
 
     /// <summary>Pressure (0-1) at a distance from a booster.</summary>
@@ -79,10 +91,25 @@ internal static class Pressure
     private static void Tick()
     {
         var now = Time.unscaledTime;
-        if (_dirty || now >= _nextSolve)
+        // Solved again when the network changes (Dirty), and when a booster's power or the settings change: checked
+        // once a second (power comes and goes with the sun and batteries). Solving every second regardless cost a few
+        // milliseconds a second with thousands of tubes.
+        if (!_dirty && now >= _nextSolve)
         {
-            _dirty = false;
             _nextSolve = now + 1f;
+            try
+            {
+                UpdatePowerUsers();
+                var settings = HashCode.Combine(Speed, Full, Fade, Kw, Settings.ColorBlind.Value);
+                if (settings != _settingsKey) { _settingsKey = settings; _dirty = true; }
+            }
+            catch (Exception e) { Plugin.Logger.LogError("Checking the boosters' power failed: " + e); }
+        }
+        if (_dirty)
+        {
+            try { UpdatePowerUsers(); }
+            catch (Exception e) { Plugin.Logger.LogError("Checking the boosters' power failed: " + e); }
+            _dirty = false;
             try { Solve(); }
             catch (Exception e) { Plugin.Logger.LogError("Working out tube pressure failed: " + e); }
         }
@@ -205,17 +232,11 @@ internal static class Pressure
     {
         var w = Moon.World;
         if (w == null) return;
-        UpdatePowerUsers();
 
         // Nearest-booster distances (Dijkstra over tubes; a booster restarts the count, so only seed from boosters).
         StartDistance.Clear();
         var queue = new PriorityQueue<int, float>();
-        var lengths = new Dictionary<int, float>();
-        float Length(int belt)
-        {
-            if (!lengths.TryGetValue(belt, out var l)) lengths[belt] = l = Belts.PathOf(belt)?.Length ?? 0f;
-            return l;
-        }
+        float Length(int belt) => LengthOf(belt);
         foreach (var booster in Belts.OfType(Tubes.Booster))
         {
             var power = BoosterPower.TryGetValue(booster, out var p) ? p : 0f;
@@ -303,8 +324,8 @@ internal static class Pressure
         foreach (var (belt, d) in StartDistance) key ^= HashCode.Combine(belt, (int)(d * 4f));
         foreach (var (belt, p) in BoosterPower) key ^= HashCode.Combine(belt, -1, (int)(p * 50f));
         foreach (var (structure, p) in JunctionPressure) key ^= HashCode.Combine(structure, -2, (int)(p * 50f));
-        key = HashCode.Combine(key, Full, Fade, Settings.ColorBlind.Value);
-        if (key != _colorKey || _recolor) { _colorKey = key; _recolor = false; RecolorAll(); }
+        key = HashCode.Combine(key, Palette);
+        if (key != _colorKey) { _colorKey = key; RecolorAll(); }
     }
 
     // ---- power ---------------------------------------------------------------------------------
@@ -317,9 +338,12 @@ internal static class Pressure
             if (!boosters.Contains(belt)) { Power.Remove(user); Users.Remove(belt); BoosterPower.Remove(belt); }
         foreach (var booster in boosters)
         {
-            var path = Belts.PathOf(booster);
-            if (path == null) continue;
-            var middle = path.Point(path.Length / 2f);
+            if (!Middles.TryGetValue(booster, out var middle))
+            {
+                var path = Belts.PathOf(booster);
+                if (path == null) continue;
+                Middles[booster] = middle = path.Point(path.Length / 2f);
+            }
             if (!Users.TryGetValue(booster, out var user)) Users[booster] = user = Power.Add(middle, Kw);
             user.Position = middle;
             user.Kw = Kw;
@@ -386,15 +410,37 @@ internal static class Pressure
 
     private static float Intensity => _bright ? 1.4f : 0.5f;
 
+    // What each piece's rings (and air) and each junction's ring last showed: only those whose pressure (or the
+    // colours: ranges, colour-blind, brightness) changed are recoloured. Recolouring every ring in the world on each
+    // change was thousands of calls into the game.
+    private static readonly Dictionary<int, int> Shown = new();
+    private static readonly Dictionary<int, int> ShownJunction = new();
+
+    private static int Palette => HashCode.Combine(Full, Fade, Settings.ColorBlind.Value, _bright);
+
+    private static int ShowKey(int belt) => HashCode.Combine(Palette,
+        StartDistance.TryGetValue(belt, out var d) ? (int)(d * 4f) : int.MinValue,
+        BoosterPower.TryGetValue(belt, out var p) ? (int)(p * 50f) : int.MinValue);
+
+    private static int JunctionKey(int structure) =>
+        HashCode.Combine(Palette, JunctionPressure.TryGetValue(structure, out var p) ? (int)(p * 50f) : int.MinValue);
+
     public static void Recolor(int belt)
     {
+        Shown[belt] = ShowKey(belt);
         var boosterPower = BoosterPower.TryGetValue(belt, out var bp) ? bp : 0f;
         if (Tubes.Air.TryGetValue(belt, out var air))
             foreach (var (puffs, rate) in air) puffs.Rate = rate * boosterPower;
         if (Tubes.Hiss.TryGetValue(belt, out var hiss) && hiss != null && !hiss.WasCollected) hiss.volume = 0.13f * boosterPower;
+        var hasStart = StartDistance.TryGetValue(belt, out var start);
+        if (Tubes.RingStrips.TryGetValue(belt, out var strip) && strip.Renderer != null && !strip.Renderer.WasCollected && strip.Colors != null && !strip.Colors.WasCollected)
+        {
+            var colors = new Color[strip.At.Length];
+            for (var i = 0; i < colors.Length; i++) colors[i] = ColorFor(hasStart ? At(start + strip.At[i]) : 0f);
+            BeltLooks.SetGlowColors(strip.Renderer, strip.Colors, colors, Intensity);
+        }
         if (!Tubes.Rings.TryGetValue(belt, out var rings)) return;
         var isBooster = Belts.TypeOf(belt) == Tubes.Booster;
-        var hasStart = StartDistance.TryGetValue(belt, out var start);
         foreach (var (ring, at) in rings)
         {
             if (ring == null || ring.WasCollected) continue;
@@ -408,6 +454,7 @@ internal static class Pressure
     /// <summary>Colours a tube splitter's or merger's ring by the pressure through it.</summary>
     public static void RecolorJunction(int structure)
     {
+        ShownJunction[structure] = JunctionKey(structure);
         if (!Tubes.JunctionRings.TryGetValue(structure, out var rings)) return;
         var pressure = JunctionPressure.TryGetValue(structure, out var p) ? p : 0f;
         foreach (var ring in rings)
@@ -418,14 +465,15 @@ internal static class Pressure
     {
         foreach (var structure in Tubes.JunctionRings.Keys.ToList())
         {
-            if (Junctions.TypeOf(structure) is null) { Tubes.JunctionRings.Remove(structure); continue; }
-            RecolorJunction(structure);
+            if (Junctions.TypeOf(structure) is null) { Tubes.JunctionRings.Remove(structure); ShownJunction.Remove(structure); continue; }
+            if (!ShownJunction.TryGetValue(structure, out var shown) || shown != JunctionKey(structure)) RecolorJunction(structure);
         }
-        foreach (var belt in Tubes.Air.Keys.ToList()) if (!Belts.Exists(belt)) Tubes.Air.Remove(belt);
-        foreach (var belt in Tubes.Rings.Keys.Concat(Tubes.Air.Keys).Distinct().ToList())
+        // Pieces no longer tubes or boosters (removed ones lose their type) are forgotten.
+        foreach (var belt in Tubes.Air.Keys.ToList()) if (Belts.TypeOf(belt) is null) Tubes.Air.Remove(belt);
+        foreach (var belt in Tubes.Rings.Keys.Concat(Tubes.RingStrips.Keys).Concat(Tubes.Air.Keys).Distinct().ToList())
         {
-            if (!Belts.Exists(belt)) { Tubes.Rings.Remove(belt); continue; }
-            Recolor(belt);
+            if (Belts.TypeOf(belt) is null) { Tubes.Rings.Remove(belt); Tubes.DropRingStrip(belt); Shown.Remove(belt); continue; }
+            if (!Shown.TryGetValue(belt, out var shown) || shown != ShowKey(belt)) Recolor(belt);
         }
     }
 }

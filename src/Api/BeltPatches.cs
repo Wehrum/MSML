@@ -409,6 +409,44 @@ internal static class BeltPatches
 
     // ---- price, length, building ---------------------------------------------------------------
 
+    // A type allowed steeper than the game's belts (MaxSlope): the conveyor kits' limit is raised while the game checks
+    // a plan of it (checks can nest: each undoes only what it raised).
+    private static readonly Stack<List<(MoonConveyorKit Kit, float Slope)>?> RaisedSlopes = new();
+    private static MoonConveyorKit[]? _kits;
+
+    private static MoonConveyorKit[] Kits()
+    {
+        if (_kits == null || _kits.Any(k => k == null || k.WasCollected)) _kits = Resources.FindObjectsOfTypeAll<MoonConveyorKit>().ToArray();
+        return _kits;
+    }
+
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CheckConveyor), new[] { typeof(MoonWalker), typeof(MoonWorld.ConveyorPlan), typeof(string), typeof(MoonConveyorPath), typeof(Il2CppSystem.Decimal), typeof(bool) },
+        new[] { ArgumentType.Normal, ArgumentType.Normal, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out })]
+    [HarmonyPrefix]
+    [HarmonyPriority(Priority.First)]
+    private static void RaiseSlope(MoonWalker builder)
+    {
+        List<(MoonConveyorKit, float)>? raised = null;
+        try
+        {
+            if (ActiveFor(builder)?.MaxSlope is { } slope)
+                foreach (var kit in Kits())
+                    if (kit.maxSlope < slope) { (raised ??= new()).Add((kit, kit.maxSlope)); kit.maxSlope = slope; }
+        }
+        catch (Exception e) { Log.Error("Raising the slope limit failed: " + e.Message); }
+        RaisedSlopes.Push(raised);
+    }
+
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CheckConveyor), new[] { typeof(MoonWalker), typeof(MoonWorld.ConveyorPlan), typeof(string), typeof(MoonConveyorPath), typeof(Il2CppSystem.Decimal), typeof(bool) },
+        new[] { ArgumentType.Normal, ArgumentType.Normal, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out })]
+    [HarmonyFinalizer]
+    private static void RestoreSlope()
+    {
+        if (RaisedSlopes.Count == 0) return;
+        if (RaisedSlopes.Pop() is not { } raised) return;
+        foreach (var (kit, slope) in raised) if (kit != null && !kit.WasCollected) kit.maxSlope = slope;
+    }
+
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CheckConveyor), new[] { typeof(MoonWalker), typeof(MoonWorld.ConveyorPlan), typeof(string), typeof(MoonConveyorPath), typeof(Il2CppSystem.Decimal), typeof(bool) },
         new[] { ArgumentType.Normal, ArgumentType.Normal, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out })]
     [HarmonyPrefix]
@@ -658,7 +696,7 @@ internal static class BeltPatches
     private static void AfterSpawn(MoonConveyorSnapshot belt, bool __result)
     {
         // Also for plain belts: a view the game reuses may still have a hidden belt from a typed one.
-        if (__result && belt != null) BeltState.Restyle(belt.id);
+        if (__result && belt != null) BeltState.RestyleSoon(belt.id);
     }
 
     // The game rebuilds belts' looks when what they join changes: hidden belts stay hidden.
@@ -932,15 +970,15 @@ internal static class BeltPatches
     [HarmonyPostfix]
     private static void AfterWorldDestroyed() => BeltState.Clear();
 
-    // The network changed: cached neighbours, routes and paths are stale. The crew's updates come often and mostly
+    // The network changed: BeltNetwork compares it with what it knew and forgets answers near the change. The crew's updates come often and mostly
     // change nothing: those only make the next cheap "did anything change?" check happen straight away.
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildConveyor))] [HarmonyPostfix] private static void NetBuilt() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveConveyor))] [HarmonyPostfix] private static void NetRemoved() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CutBelt))] [HarmonyPostfix] private static void NetCut() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ShiftBelt))] [HarmonyPostfix] private static void NetShifted() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildStructure))] [HarmonyPostfix] private static void NetStructure() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildDepot))] [HarmonyPostfix] private static void NetDepot() => BeltNetwork.Invalidate();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveStructure))] [HarmonyPostfix] private static void NetStructureRemoved() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildConveyor))] [HarmonyPostfix] private static void NetBuilt() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveConveyor))] [HarmonyPostfix] private static void NetRemoved() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CutBelt))] [HarmonyPostfix] private static void NetCut() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ShiftBelt))] [HarmonyPostfix] private static void NetShifted() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildStructure))] [HarmonyPostfix] private static void NetStructure() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildDepot))] [HarmonyPostfix] private static void NetDepot() => BeltNetwork.Changed();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveStructure))] [HarmonyPostfix] private static void NetStructureRemoved() => BeltNetwork.Changed();
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewBelts))] [HarmonyPostfix] private static void NetCrewBelts() => BeltNetwork.CheckSoon();
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewStructures))] [HarmonyPostfix] private static void NetCrewStructures() => BeltNetwork.CheckSoon();
 }

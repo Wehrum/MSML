@@ -41,6 +41,7 @@ internal static class Tubes
     private const float MaxGap = 2.5f;             // the belt's most above the ground (the tube drops to the ground)
     private const float MaxRise = 2.5f;            // the ground's most above the belt (the tube rides up over it)
     private const float MaxDrop = MaxGap + 0.2f;
+    private const float MaxSlope = 75f;            // down (or up) hills: steeper than belts (45), still along the ground
 
     /// <summary>Each booster's air: (puffs, rate at full power).</summary>
     public static readonly Dictionary<int, List<(Puffs Puffs, float Rate)>> Air = new();
@@ -50,6 +51,9 @@ internal static class Tubes
 
     /// <summary>Each tube's (or booster's) glowing rings and how far along the belt they sit.</summary>
     public static readonly Dictionary<int, List<(Renderer Ring, float At)>> Rings = new();
+
+    /// <summary>Each tube's rings in one renderer: their colours (a pixel each) and how far along the tube they sit.</summary>
+    public static readonly Dictionary<int, (Renderer Renderer, Texture2D Colors, float[] At)> RingStrips = new();
 
     /// <summary>Each tube splitter's and merger's pressure ring.</summary>
     public static readonly Dictionary<int, List<Renderer>> JunctionRings = new();
@@ -70,6 +74,7 @@ internal static class Tubes
             OnGround = true,
             MaxGroundGap = MaxGap,
             MaxGroundRise = MaxRise,
+            MaxSlope = MaxSlope,
             PassThrough = true,
             ColliderTop = 0.12f,
             DeleteRidersOnRemove = true,
@@ -89,6 +94,7 @@ internal static class Tubes
             OnGround = true,
             MaxGroundGap = MaxGap,
             MaxGroundRise = MaxRise,
+            MaxSlope = MaxSlope,
             PassThrough = true,
             ColliderTop = 0.12f,
             DeleteRidersOnRemove = true,
@@ -130,6 +136,7 @@ internal static class Tubes
         Belts.TypeChanged += (belt, type) =>
         {
             if (type != Tube && type != Booster) Rings.Remove(belt);
+            if (type != Tube) DropRingStrip(belt);
             if (type != Booster) { Air.Remove(belt); Hiss.Remove(belt); }
             Ground.Remove(belt);
         };
@@ -474,22 +481,62 @@ internal static class Tubes
         return go.transform;
     }
 
+    // All of a tube's rings in one mesh, each coloured by a pixel of a small texture (RingStrips): a renderer and mesh
+    // per ring made a long tube's look slow to build (and thousands of renderers).
     private static void AddRings(int belt, MoonConveyorPath path, Transform parent, float length, float radius)
     {
-        var rings = new List<(Renderer, float)>();
         var count = Mathf.Max(1, Mathf.FloorToInt(length / RingSpacing));
         var first = (length - (count - 1) * RingSpacing) / 2f;
-        var material = BeltLooks.Glow(Color.white);
+        const int sides = 22;
+        var vertices = new List<Vector3>(count * 2 * (sides + 1));
+        var normals = new List<Vector3>(vertices.Capacity);
+        var uvs = new List<Vector2>(vertices.Capacity);
+        var triangles = new List<int>(count * sides * 6);
+        var at = new float[count];
         for (var i = 0; i < count; i++)
         {
-            var at = first + i * RingSpacing;
-            var mesh = BeltLooks.Tube(path, parent, radius, 0f, at - RingWidth / 2f, at + RingWidth / 2f, sides: 22, step: RingWidth,
-                liftAt: d => Shape(belt, path, d).Centre);
-            if (mesh == null) continue;
-            rings.Add((BeltLooks.Show(parent, "Ring", mesh, material, shadows: false), at));
+            at[i] = first + i * RingSpacing;
+            var u = (i + 0.5f) / count;
+            var start = vertices.Count;
+            var outwardFirst = default(Vector3);
+            foreach (var d in new[] { at[i] - RingWidth / 2f, at[i] + RingWidth / 2f })
+            {
+                var dd = VMath.Clamp(d, 0f, length);
+                path.Frame(dd, out var position, out _, out var right, out var up);
+                var centre = VMath.Mad(position, up, Shape(belt, path, dd).Centre);
+                for (var s = 0; s <= sides; s++)
+                {
+                    var angle = s * MathF.PI * 2f / sides;
+                    var outward = VMath.Mad(default, right, MathF.Cos(angle), up, MathF.Sin(angle));
+                    if (s == 0) outwardFirst = outward;
+                    vertices.Add(VMath.Mad(centre, outward, radius));
+                    normals.Add(outward);
+                    uvs.Add(new Vector2(u, 0.5f));
+                }
+            }
+            // Winding facing out (it depends on the path frame's handedness).
+            var flip = VMath.Dot(VMath.Cross(VMath.Sub(vertices[start + 1], vertices[start]), VMath.Sub(vertices[start + sides + 1], vertices[start])), outwardFirst) < 0f;
+            for (var s = 0; s < sides; s++)
+            {
+                int a = start + s, b = a + 1, c = a + sides + 1, e = c + 1;
+                if (flip) triangles.AddRange(new[] { a, c, b, b, c, e });
+                else triangles.AddRange(new[] { a, b, c, b, e, c });
+            }
         }
-        Rings[belt] = rings;
+        var mesh = BeltLooks.WorldMesh(parent, vertices, normals, triangles, "Rings", uvs);
+        var renderer = BeltLooks.Show(parent, "Rings", mesh, BeltLooks.Glow(Color.white), shadows: false);
+        var colors = new Texture2D(count, 1, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "MSML ring colours" };
+        DropRingStrip(belt);
+        RingStrips[belt] = (renderer, colors, at);
+        Rings.Remove(belt);
         Pressure.Recolor(belt);
+    }
+
+    internal static void DropRingStrip(int belt)
+    {
+        if (!RingStrips.TryGetValue(belt, out var strip)) return;
+        RingStrips.Remove(belt);
+        if (strip.Colors != null && !strip.Colors.WasCollected) UnityEngine.Object.Destroy(strip.Colors);
     }
 
     // ---- placement holograms -------------------------------------------------------------------

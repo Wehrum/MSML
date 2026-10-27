@@ -96,8 +96,8 @@ public static class BuildTool
         yield return 0.4f;
     }
 
-    /// <summary>Aims at a point and clicks until a belt is started there (throws if the game won't).</summary>
-    public static IEnumerator StartBelt(Vector3 at, int tries = 6)
+    /// <summary>Aims at a point and clicks until a belt is started there (throws if the game won't, unless told not to: then check Builder.ConveyorHasStart).</summary>
+    public static IEnumerator StartBelt(Vector3 at, int tries = 6, bool orThrow = true)
     {
         var b = Builder;
         AimAt(at);
@@ -107,7 +107,7 @@ public static class BuildTool
             yield return Click();
             yield return 0.25f;
         }
-        if (!b.ConveyorHasStart)
+        if (!b.ConveyorHasStart && orThrow)
             throw new InvalidOperationException($"Couldn't start a belt at {at} (conveyor mode {b.ConveyorMode}, input reads {_reads}).");
     }
 

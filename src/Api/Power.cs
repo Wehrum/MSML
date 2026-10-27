@@ -29,6 +29,10 @@ public sealed class PowerUser
     internal int Panel { get; set; }
     internal Vector3 PanelPoint { get; set; }
     internal bool Removed { get; set; }
+
+    // Where it was, and which panels there were, when its panel was last worked out.
+    internal Vector3 JoinedAt;
+    internal int JoinedPanels;
 }
 
 /// <summary>
@@ -64,19 +68,34 @@ public static class Power
 
     private static float _nextJoin;
 
-    // Which panel's grid each user is on (the nearest panel in range), refreshed every second.
+    // Which panel's grid each user is on (the nearest panel in range), refreshed every second: only for users that moved
+    // or when the panels changed (working it out for every user every second was thousands of calls into the game).
     private static void Join(MoonWorld w)
     {
         if (Time.unscaledTime < _nextJoin) return;
         _nextJoin = Time.unscaledTime + 1f;
         var panels = new List<(int Id, Vector3 Position, float Range, int Grid)>();
+        var key = 17;
         foreach (var node in w.powerNodes)
             if (node != null && node.panel && node.state != null && node.record != null)
-                panels.Add((node.record.id, node.position, node.spec.range, node.state.Grid));
+            {
+                var panel = (node.record.id, node.position, node.spec.range, node.state.Grid);
+                panels.Add(panel);
+                key = HashCode.Combine(key, panel.Item1, panel.Item4, (int)panel.Item3, (int)(panel.Item2.x * 4f), (int)(panel.Item2.y * 4f), (int)(panel.Item2.z * 4f));
+            }
         foreach (var user in Users)
         {
-            var best = panels.Where(p => (p.Position - user.Position).sqrMagnitude <= p.Range * p.Range)
-                             .OrderBy(p => (p.Position - user.Position).sqrMagnitude).FirstOrDefault();
+            var at = user.Position;
+            if (user.JoinedPanels == key && VMath.SqrDistance(user.JoinedAt, at) < 0.01f) continue;
+            user.JoinedPanels = key;
+            user.JoinedAt = at;
+            (int Id, Vector3 Position, float Range, int Grid) best = default;
+            var bestDistance = float.MaxValue;
+            foreach (var p in panels)
+            {
+                var d = VMath.SqrDistance(p.Position, at);
+                if (d <= p.Range * p.Range && d < bestDistance) { bestDistance = d; best = p; }
+            }
             user.Grid = best.Grid;
             user.Panel = best.Id;
             if (best.Id == 0) user.Power = 0f;

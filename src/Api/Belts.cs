@@ -94,6 +94,12 @@ public sealed class BeltType
     public float GroundRamp { get; set; } = 1.6f;
 
     /// <summary>
+    /// The steepest this type may be built, in degrees (null: the game's limit for belts, 45). E.g. for a type that
+    /// follows the ground down steep hills.
+    /// </summary>
+    public float? MaxSlope { get; set; }
+
+    /// <summary>
     /// Vehicles and players go over belts of this type as if they were ground (no bumping into them, no being carried
     /// along); the build tool can still pick them. E.g. for belts sunk into the ground.
     /// </summary>
