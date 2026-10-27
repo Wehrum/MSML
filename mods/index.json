@@ -1,0 +1,64 @@
+﻿{
+    "mods":  [
+                 {
+                     "id":  "moonsweepmods.debugmenu",
+                     "name":  "Debug Menu",
+                     "version":  "0.3.0",
+                     "folder":  "DebugMenu",
+                     "file":  "DebugMenu-0.3.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/DebugMenu-0.3.0.zip",
+                     "sha256":  "046AA629502CA95D8A02D08AD9DCA3F0117295976711BA58D04AB55A5578F055",
+                     "bytes":  2348357
+                 },
+                 {
+                     "id":  "moonsweepmods.helloworld",
+                     "name":  "Hello World",
+                     "version":  "0.1.0",
+                     "folder":  "HelloWorld",
+                     "file":  "HelloWorld-0.1.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HelloWorld-0.1.0.zip",
+                     "sha256":  "97F7FBEDBDCE1789BB860205DC7826A789F24E038F51AB166590053886341D8C",
+                     "bytes":  35560
+                 },
+                 {
+                     "id":  "msml.betterbelts",
+                     "name":  "Better Belts",
+                     "version":  "0.1.0",
+                     "folder":  "BetterBelts",
+                     "file":  "BetterBelts-0.1.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.1.0.zip",
+                     "sha256":  "7DBB90A7EB2DF6E551D6AD0FB9449ED103F4F513DA7395A0AFBB2AEDDA12BFF1",
+                     "bytes":  951487
+                 },
+                 {
+                     "id":  "msml.hexharvester",
+                     "name":  "Hex Harvester",
+                     "version":  "0.5.0",
+                     "folder":  "HexHarvester",
+                     "file":  "HexHarvester-0.5.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HexHarvester-0.5.0.zip",
+                     "sha256":  "04AA1FD3787CDDE191737DF731947D3C0E809E4055C7008353D53163930A2894",
+                     "bytes":  512051
+                 },
+                 {
+                     "id":  "msml.moonfixerupper",
+                     "name":  "MoonFixerUpper",
+                     "version":  "0.1.0",
+                     "folder":  "MoonFixerUpper",
+                     "file":  "MoonFixerUpper-0.1.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonFixerUpper-0.1.0.zip",
+                     "sha256":  "CC79E16387D4A75713934DC5768930D527EA9E5CFBAC64E0503E309B7ABEC3B1",
+                     "bytes":  4174
+                 },
+                 {
+                     "id":  "msml.moonsweeperplus",
+                     "name":  "MoonSweeper+",
+                     "version":  "0.1.0",
+                     "folder":  "MoonSweeperPlus",
+                     "file":  "MoonSweeperPlus-0.1.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.1.0.zip",
+                     "sha256":  "7064680B25434112F55D31F5AD426CFF8CF96F58C0029FE1FEC6EEF9574E5A30",
+                     "bytes":  4044
+                 }
+             ]
+}

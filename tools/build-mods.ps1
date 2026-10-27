@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Builds every mod under official\ and examples\ into a drop-in zip (artifacts\mods), and with -Sync copies them into the repo's
-    mods\ folder (with a generated mods\README.md) so players can download them from GitHub.
+    mods\ folder (with a generated mods\README.md, and mods\index.json for the in-game update check) so players can download them from GitHub.
 
 .DESCRIPTION
     A mod zip holds one folder named after the mod, containing its DLL, mod.json and preview.png. A zip is only
@@ -88,7 +88,7 @@ foreach ($dir in Get-ChildItem (Join-Path $deploy "Mods") -Directory -ErrorActio
     $zip = Join-Path $ModsOut "$($dir.Name)-$ver.zip"
     New-Zip $dir.FullName $zip $dir.Name
     $mods += [pscustomobject]@{ Key = $dir.Name; Version = $ver; Zip = $zip; Name = $(if ($manifest.name) { $manifest.name } else { $dir.Name });
-        Description = "$($manifest.description)"; Author = "$($manifest.author)" }
+        Description = "$($manifest.description)"; Author = "$($manifest.author)"; Id = $(if ($manifest.id) { "$($manifest.id)" } else { $dir.Name }) }
     Write-Host "Built mod $zip" -ForegroundColor Green
 }
 Remove-Item -Recurse -Force $deploy
@@ -135,5 +135,20 @@ $($rows -join "`n")
 $readmePath = Join-Path $RepoMods "README.md"
 $oldReadme = if (Test-Path $readmePath) { Get-Content $readmePath -Raw } else { "" }
 if ($oldReadme.Trim() -ne $readme.Trim()) { Set-Content $readmePath $readme -Encoding utf8; $changed = $true }
+
+# mods\index.json: what the in-game MODS screen checks for updates (by mod id; the zip's SHA-256 is checked on download).
+$index = [ordered]@{
+    mods = @(foreach ($m in $mods | Sort-Object Id) {
+        $file = Split-Path -Leaf $m.Zip
+        $repoZip = Join-Path $RepoMods $file
+        [ordered]@{ id = $m.Id; name = $m.Name; version = "$($m.Version)"; folder = $m.Key; file = $file
+            url = "https://raw.githubusercontent.com/$Repo/main/mods/$file"; sha256 = (Get-FileHash $repoZip -Algorithm SHA256).Hash
+            bytes = (Get-Item $repoZip).Length }
+    })
+}
+$indexJson = $index | ConvertTo-Json -Depth 5
+$indexPath = Join-Path $RepoMods "index.json"
+$oldIndex = if (Test-Path $indexPath) { Get-Content $indexPath -Raw } else { "" }
+if ($oldIndex.Trim() -ne $indexJson.Trim()) { Set-Content $indexPath $indexJson -Encoding utf8; $changed = $true }
 
 if ($changed) { Write-Host "mods\ changed." -ForegroundColor Green } else { Write-Host "mods\ is up to date." }

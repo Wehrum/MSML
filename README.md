@@ -25,6 +25,8 @@ MSML doesn't include any mods. Ready-made ones are in [`mods/`](mods). To add on
 
 Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
+**Updates:** the MODS screen checks for updates when you open it (or with **CHECK FOR UPDATES**). Mods with a newer version get an **UPDATE** button (or **UPDATE ALL MODS**); the new version loads after a restart. When MSML itself has a new release, **UPDATE MSML** closes the game, runs the installer in a PowerShell window and starts the game again. The install command above still works too.
+
 ### Official mods
 
 | Mod | Description | |
@@ -69,11 +71,14 @@ Mods\YourMod\
   "name": "Your Mod",
   "version": "1.0.0",
   "author": "You",
-  "description": "What it does. Newlines (\\n) are kept."
+  "description": "What it does. Newlines (\\n) are kept.",
+  "updates": "https://example.com/your-mod/index.json"
 }
 ```
 
 Without `mod.json`, the name and version come from the `[BepInPlugin]` attribute.
+
+`updates` (optional) lets players update your mod from the MODS screen: a link to a JSON file listing your mod's latest version, `{ "mods": [ { "id": "yourmod.id", "version": "1.1.0", "url": "https://.../YourMod-1.1.0.zip", "sha256": "..." } ] }` (`id` matches your mod.json's `id`; `sha256` is optional but recommended). Official mods are checked through [`mods/index.json`](mods/index.json), which `tools/build-mods.ps1 -Sync` writes.
 
 ### Mod settings (MSML API)
 

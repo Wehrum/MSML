@@ -159,6 +159,7 @@ internal static class ModsScreen
         if (_menu.stage != null) _menu.stage._PanelOpen_k__BackingField = true;
         IsOpen = true;
         LayoutFooter();
+        if (Updates.Status == Updates.State.Idle) Updates.Check();   // once a session, when the screen first opens
         Refresh();
     }
 
@@ -300,9 +301,23 @@ internal static class ModsScreen
         _footer.Add(kit.NewChip(_root, "BACK", Left, FootY, 46, 18, Act(Back), null, "Esc", false));
         _footer.Add(kit.NewChip(_root, "ADD MOD", Left, FootY, 46, 18, Act(AddMod), null, null, false));
         _footer.Add(kit.NewChip(_root, "OPEN MODS FOLDER", Left, FootY, 46, 18, Act(ModActions.OpenModsFolder), null, null, false));
+        _checkChip = kit.NewChip(_root, "CHECK FOR UPDATES", Left, FootY, 46, 18, Act(Updates.Check), null, null, false);
+        _footer.Add(_checkChip);
+        _updateAllChip = kit.NewChip(_root, "UPDATE ALL MODS", Left, FootY, 46, 18, Act(UpdateAllMods), null, null, true);
+        _footer.Add(_updateAllChip);
+        _msmlChip = kit.NewChip(_root, "UPDATE MSML", Left, FootY, 46, 18, Act(ConfirmMsmlUpdate), null, null, true);
+        _footer.Add(_msmlChip);
         _restartChip = kit.NewChip(_root, "RESTART TO APPLY", 0, FootY, 46, 18, Act(ConfirmRestart), null, null, true);
         _version = kit.Text(_root, "", DetX, 136, DetW, 30, 16, MoonSimpleKit.Faint, false, TextAlignmentOptions.MidlineRight);
+        if (!_updatesHooked)
+        {
+            _updatesHooked = true;
+            Updates.Changed += () => { if (IsOpen) { LoadState(); Refresh(); } };
+        }
     }
+
+    private static MoonSimpleKit.Chip? _checkChip, _updateAllChip, _msmlChip;
+    private static bool _updatesHooked;
 
     private static TMP_Text? _version;
 
@@ -315,6 +330,7 @@ internal static class ModsScreen
         var x = Left;
         foreach (var chip in _footer)
         {
+            if (!chip.rect.gameObject.activeSelf) continue;
             MoonSimpleKit.Size(chip);
             MoonSimpleKit.Place(chip.rect, x, FootY, chip.rect.sizeDelta.x, 46);
             x += chip.rect.sizeDelta.x + 14;
@@ -389,8 +405,59 @@ internal static class ModsScreen
             : "Choose which mods load when the game starts. Changes apply after a restart.";
         _status.color = pending ? MoonSimpleKit.Orange : MoonSimpleKit.Faint;
         _restartChip!.rect.gameObject.SetActive(pending);
-        _version!.text = VersionCheck.StatusLine(Hex(MoonSimpleKit.Orange));
+        _version!.text = VersionCheck.StatusLine(Hex(MoonSimpleKit.Orange)) + UpdateNote();
+        RefreshUpdateChips();
         FillDetails();
+    }
+
+    // ---- updates ---------------------------------------------------------------------------------
+
+    private static string UpdateNote()
+    {
+        var orange = Hex(MoonSimpleKit.Orange);
+        return Updates.Status switch
+        {
+            Updates.State.Checking => "  ·  checking for updates...",
+            Updates.State.Failed => $"  ·  <color=#{orange}>couldn't check for updates</color>",
+            Updates.State.Done when Updates.MsmlUpdate != null => $"  ·  <color=#{orange}>MSML {Updates.MsmlUpdate} available</color>",
+            Updates.State.Done => "  ·  up to date",
+            _ => "",
+        };
+    }
+
+    private static void RefreshUpdateChips()
+    {
+        var modUpdates = Updates.ModUpdates.Keys.Count(k => Find(k) != null);
+        _checkChip!.text.text = Updates.Status == Updates.State.Checking ? "CHECKING..." : "CHECK FOR UPDATES";
+        _updateAllChip!.text.text = $"UPDATE ALL MODS ({modUpdates})";
+        _updateAllChip.rect.gameObject.SetActive(modUpdates > 0 && Updates.Downloading.Count == 0);
+        _msmlChip!.text.text = $"UPDATE MSML TO {Updates.MsmlUpdate}";
+        _msmlChip.rect.gameObject.SetActive(Updates.MsmlUpdate != null);
+        LayoutFooter();
+    }
+
+    private static void UpdateMod(string key)
+    {
+        var name = Find(key)?.Name ?? key;
+        Updates.UpdateMod(key, IsEnabled(key), error =>
+        {
+            if (error != null) { Ask($"Couldn't update {name}", error, "OK", () => { }, null); return; }
+            Changed.Add(key);
+        });
+    }
+
+    private static void UpdateAllMods()
+    {
+        foreach (var key in Updates.ModUpdates.Keys.Where(k => Find(k) != null).ToList()) UpdateMod(key);
+    }
+
+    private static void ConfirmMsmlUpdate()
+    {
+        if (Updates.MsmlUpdate is not { } version) return;
+        Ask($"Update MSML to {version}?",
+            "Moon Sweepers will close, MSML will update in a PowerShell window (Windows may ask for administrator rights), " +
+            "then the game starts again. Your mods and settings are kept.",
+            "UPDATE", Updates.UpdateMsml, "CANCEL");
     }
 
     private static void FillList(RectTransform content, List<ModInfo> mods, bool enabledColumn, string emptyText)
@@ -414,6 +481,11 @@ internal static class ModsScreen
             var badge = mod.Problem != null ? "!" : Pending(key) ? "*" : "";
             var tag = kit.Text(row, badge, width - 96, 0, 40, RowH, 22, mod.Problem != null ? MoonSimpleKit.Red : MoonSimpleKit.Orange, true, TextAlignmentOptions.Center);
             tag.raycastTarget = false;
+            if (badge.Length == 0 && Updates.ModUpdates.ContainsKey(key))
+            {
+                var update = kit.Text(row, Updates.Downloading.Contains(key) ? "..." : "NEW", width - 104, 0, 52, RowH, 13, MoonSimpleKit.Orange, true, TextAlignmentOptions.Center);
+                update.raycastTarget = false;
+            }
 
             var normal = selected ? MoonSimpleKit.PillFill : MoonSimpleKit.ChipFill;
             var hover = fill.gameObject.AddComponent<MoonWorkshopHover>();
@@ -485,6 +557,7 @@ internal static class ModsScreen
         var meta = new List<string>();
         if (mod.Version.Length > 0) meta.Add("Version " + mod.Version);
         if (mod.Author.Length > 0) meta.Add("by " + mod.Author);
+        if (Updates.ModUpdates.TryGetValue(mod.Key, out var available)) meta.Add($"<color=#{Hex(MoonSimpleKit.Orange)}>{available.Version} available</color>");
         if (meta.Count > 0)
         {
             kit.Text(_details, string.Join("  ·  ", meta), 0, y, DetW, 26, 18, MoonSimpleKit.Faint, false, TextAlignmentOptions.MidlineLeft);
@@ -519,6 +592,15 @@ internal static class ModsScreen
             var settings = kit.NewChip(_details, "SETTINGS", x, toggleY, 52, 20, Act(() => OpenSettings(key)), null, null, false);
             MoonSimpleKit.Size(settings);
             MoonSimpleKit.Place(settings.rect, x, toggleY, settings.rect.sizeDelta.x, 52);
+            x += settings.rect.sizeDelta.x + 14;
+        }
+        if (Updates.ModUpdates.TryGetValue(key, out var update))
+        {
+            var downloading = Updates.Downloading.Contains(key);
+            var chip = kit.NewChip(_details, downloading ? "DOWNLOADING..." : $"UPDATE TO {update.Version}", x, toggleY, 52, 20,
+                Act(() => { if (!Updates.Downloading.Contains(key)) UpdateMod(key); }), null, null, !downloading);
+            MoonSimpleKit.Size(chip);
+            MoonSimpleKit.Place(chip.rect, x, toggleY, chip.rect.sizeDelta.x, 52);
         }
     }
 

@@ -50,8 +50,8 @@ internal static class ModActions
         if (files.Count > 0) _onPicked?.Invoke(imported, errors);
     }
 
-    /// <summary>Copies a .zip or .dll into Mods\ (replacing an older copy of the same mod) and enables it.</summary>
-    public static ImportResult Import(string path)
+    /// <summary>Copies a .zip or .dll into Mods\ (replacing an older copy of the same mod) and, if asked, enables it.</summary>
+    public static ImportResult Import(string path, bool enable = true, string? folder = null)
     {
         var mods = ModPaths.ModsDir;
         Directory.CreateDirectory(mods);
@@ -92,15 +92,19 @@ internal static class ModActions
 
             if (!Directory.EnumerateFiles(staging, "*.dll", SearchOption.AllDirectories).Any())
                 throw new InvalidOperationException("It doesn't contain any mod DLLs.");
+            if (folder != null) key = folder;   // an update goes into the mod's existing folder
 
             var target = Path.Combine(mods, key);
             var replaced = Directory.Exists(target);
             if (replaced) Directory.Delete(target, true);
             Directory.Move(staging, target);
 
-            var enabled = ModCatalog.LoadEnabled();
-            if (!enabled.Contains(key, StringComparer.OrdinalIgnoreCase)) enabled.Add(key);
-            ModCatalog.SaveEnabled(enabled);
+            if (enable)
+            {
+                var enabled = ModCatalog.LoadEnabled();
+                if (!enabled.Contains(key, StringComparer.OrdinalIgnoreCase)) enabled.Add(key);
+                ModCatalog.SaveEnabled(enabled);
+            }
 
             var name = ModCatalog.Scan().FirstOrDefault(m => m.Key.Equals(key, StringComparison.OrdinalIgnoreCase))?.Name ?? key;
             Plugin.Logger.LogInfo($"{(replaced ? "Updated" : "Added")} mod {name} ({key}) from {path}");

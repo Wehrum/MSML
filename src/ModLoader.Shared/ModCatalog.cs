@@ -37,6 +37,9 @@ internal sealed class ModManifest
     public string? Description { get; set; }
     public string? Preview { get; set; }
     public string? Website { get; set; }
+    /// <summary>Optional: a link to a JSON list of this mod's releases ({ "mods": [ { "id", "version", "url", "sha256" } ] }),
+    /// checked by CHECK FOR UPDATES. Official mods are checked without it.</summary>
+    public string? Updates { get; set; }
 }
 
 internal sealed class ModInfo
@@ -52,6 +55,7 @@ internal sealed class ModInfo
     public string Description { get; set; } = "";
     public string? PreviewPath { get; set; }
     public string Website { get; set; } = "";
+    public string Updates { get; set; } = "";
     public List<string> Dlls { get; } = new();
     public string? Problem { get; set; }
 }
@@ -114,6 +118,7 @@ internal static class ModCatalog
         mod.Author = manifest?.Author ?? "";
         mod.Description = manifest?.Description ?? "";
         mod.Website = manifest?.Website ?? "";
+        mod.Updates = manifest?.Updates ?? "";
 
         if (dir != null)
         {
