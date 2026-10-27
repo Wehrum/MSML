@@ -101,7 +101,7 @@ internal static class Updates
             {
                 try
                 {
-                    var index = JsonDocument.Parse(await Http.GetStringAsync(url)).RootElement;
+                    var index = JsonDocument.Parse(url == OfficialIndexUrl ? await OfficialIndex() : await Http.GetStringAsync(url)).RootElement;
                     answered++;
                     foreach (var entry in index.GetProperty("mods").EnumerateArray())
                     {
@@ -145,6 +145,25 @@ internal static class Updates
 
     private static string? Text(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+    // The official mods list as it is now. raw.githubusercontent.com keeps a copy of a file for 5 minutes (whatever
+    // the request says), so right after mods are updated the list read from main can still be the old one, with links
+    // to zips that are gone. Read at main's newest commit instead (a new address for every commit, so never an old
+    // copy); the plain address if GitHub can't say which commit that is.
+    private static async Task<string> OfficialIndex()
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/{Repo}/commits/main");
+            request.Headers.Accept.ParseAdd("application/vnd.github.sha");
+            using var response = await Http.SendAsync(request);
+            var sha = response.IsSuccessStatusCode ? (await response.Content.ReadAsStringAsync()).Trim() : "";
+            if (sha.Length == 40 && sha.All(Uri.IsHexDigit))
+                return await Http.GetStringAsync($"https://raw.githubusercontent.com/{Repo}/{sha}/mods/index.json");
+        }
+        catch (Exception e) { Plugin.Logger.LogWarning("Update check: couldn't get the newest mods list, using the usual one: " + e.Message); }
+        return await Http.GetStringAsync(OfficialIndexUrl);
+    }
 
     /// <summary>True if <paramref name="candidate"/> is a newer version than <paramref name="current"/>.</summary>
     public static bool Newer(string candidate, string? current)

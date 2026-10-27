@@ -102,14 +102,17 @@ foreach ($m in $mods) {
     $target = Join-Path $RepoMods (Split-Path -Leaf $m.Zip)
     $same = (Test-Path $target) -and ((Get-ZipDigest $target) -eq (Get-ZipDigest $m.Zip))
     if (-not $same) { Copy-Item -Force $m.Zip $target; $changed = $true; Write-Host "Updated mods\$(Split-Path -Leaf $target)" -ForegroundColor Green }
-    # Remove other versions of this mod.
-    foreach ($old in Get-ChildItem $RepoMods -Filter "$($m.Key)-*.zip" | Where-Object { $_.Name -ne (Split-Path -Leaf $target) }) {
+    # Remove older versions of this mod, but keep the one before: the in-game list (and anyone's copy of it from a
+    # few minutes ago) may still point at it.
+    $others = @(Get-ChildItem $RepoMods -Filter "$($m.Key)-*.zip" | Where-Object { $_.Name -ne (Split-Path -Leaf $target) } |
+        Sort-Object { try { [version]($_.BaseName.Substring($m.Key.Length + 1)) } catch { [version]"0.0" } } -Descending)
+    foreach ($old in $others | Select-Object -Skip 1) {
         Remove-Item -Force $old.FullName; $changed = $true; Write-Host "Removed old mods\$($old.Name)"
     }
 }
 # Remove zips of mods that no longer exist.
 foreach ($zip in Get-ChildItem $RepoMods -Filter *.zip) {
-    if (-not ($mods | Where-Object { $zip.Name -eq (Split-Path -Leaf $_.Zip) })) { Remove-Item -Force $zip.FullName; $changed = $true; Write-Host "Removed mods\$($zip.Name)" }
+    if (-not ($mods | Where-Object { $zip.Name -like "$($_.Key)-*.zip" })) { Remove-Item -Force $zip.FullName; $changed = $true; Write-Host "Removed mods\$($zip.Name)" }
 }
 
 $rows = foreach ($m in $mods | Sort-Object Name) {
