@@ -23,22 +23,22 @@
                  {
                      "id":  "msml.betterbelts",
                      "name":  "Better Belts",
-                     "version":  "0.1.0",
+                     "version":  "0.2.0",
                      "folder":  "BetterBelts",
-                     "file":  "BetterBelts-0.1.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.1.0.zip",
-                     "sha256":  "7DBB90A7EB2DF6E551D6AD0FB9449ED103F4F513DA7395A0AFBB2AEDDA12BFF1",
-                     "bytes":  951487
+                     "file":  "BetterBelts-0.2.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/BetterBelts-0.2.0.zip",
+                     "sha256":  "BD3850E9841D1E0A39214B218A9DCEC772F2CA21EBF92C250BC781364D2CB92D",
+                     "bytes":  1192779
                  },
                  {
                      "id":  "msml.hexharvester",
                      "name":  "Hex Harvester",
-                     "version":  "0.5.0",
+                     "version":  "0.5.1",
                      "folder":  "HexHarvester",
-                     "file":  "HexHarvester-0.5.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HexHarvester-0.5.0.zip",
-                     "sha256":  "04AA1FD3787CDDE191737DF731947D3C0E809E4055C7008353D53163930A2894",
-                     "bytes":  512051
+                     "file":  "HexHarvester-0.5.1.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/HexHarvester-0.5.1.zip",
+                     "sha256":  "610903FB7B594FB5728DB8E9C4D4211316FDCDF29788458EA9656462AD029CDC",
+                     "bytes":  512207
                  },
                  {
                      "id":  "msml.moonfixerupper",
