@@ -49,9 +49,12 @@ internal static class Crew
         }).Concat(Belts.Types.OrderBy(t => t.Kind).Select(t => new Entry
         {
             Id = t.Id, Name = t.Name, Mod = t.ModName, Index = -1,
+        })).Concat(Junctions.Types.OrderBy(t => t.Kind).Select(t => new Entry
+        {
+            Id = t.Id, Name = t.Name, Mod = t.ModName, Index = -1,
         })).ToList();
 
-    private static bool HasCrewContent => Vehicles.All.Count > 0 || Belts.Types.Count > 0;
+    private static bool HasCrewContent => Vehicles.All.Count > 0 || Belts.Types.Count > 0 || Junctions.Types.Count > 0;
 
     private static bool _applied;
 

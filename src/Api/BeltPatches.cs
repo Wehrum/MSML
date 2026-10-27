@@ -30,6 +30,7 @@ internal static class BeltPatches
         if (_applied) return;
         _applied = true;
         new Harmony("msml.api.belts").PatchAll(typeof(BeltPatches));
+        BuildMenuPatches.Apply();
         MoonData.Apply();
         CrewMessages.Patches.Apply();
         Crew.Apply();
@@ -48,6 +49,18 @@ internal static class BeltPatches
     }
 
     private static BeltType? ByKind(int kind) => Belts.Types.FirstOrDefault(t => t.Kind == kind);
+
+    /// <summary>The belt type card chosen, while the game shows its belt card as the chosen one; else null.</summary>
+    internal static int? ChosenCard(MoonDepotBuilder builder) =>
+        _active != null && builder.selectedBuildId == MoonDepotBuilder.ConveyorKind ? _active.Kind : null;
+
+    /// <summary>The local player has the build menu open, or is placing or drawing belts.</summary>
+    internal static bool Building =>
+        _builder != null && !_builder.WasCollected && (_builder.IsOpen || _builder.ConveyorMode || _builder.IsPlacing);
+
+    /// <summary>While a belt type's card is being chosen: its kind, if the game asks about the belt kind for it.</summary>
+    internal static int? RedirectingCard(int kind) =>
+        _redirecting && _active != null && kind == MoonDepotBuilder.ConveyorKind ? _active.Kind : null;
 
     // The game's own longest belt (its conveyor kit's), raised while building a type allowed to be longer.
     private static MoonConveyorKit? _kit;
@@ -83,30 +96,63 @@ internal static class BeltPatches
     private static (int Belt, float From, float To)? _insertTarget;
     private const float InsertReach = 1.6f;
 
-    // The plan's start is aimed at (or beside) a belt the type goes into: lay the piece along that belt there.
+    private static bool _lifting;
+
+    // The game won't let a belt dip into the ground, but a belt type that follows the ground (MaxGroundRise) may cut
+    // through a hump: check the same plan raised just clear of it for everything else (structures, other belts), and
+    // build the plan as it was. The type's own ground rule (NearGround) then checks how deep it goes.
+    private static void LiftOverGround(MoonWorld w, MoonWalker builder, BeltType type, MoonWorld.ConveyorPlan plan,
+        ref string reason, ref MoonConveyorPath path, ref Il2CppSystem.Decimal price, ref bool result)
+    {
+        const float step = 0.4f;
+        for (var lift = step; lift <= type.MaxGroundRise + step + 0.001f; lift += step)
+        {
+            var raised = new MoonWorld.ConveyorPlan
+            {
+                start = plan.start + plan.startUp.normalized * lift, startDirection = plan.startDirection, startUp = plan.startUp,
+                end = plan.end + plan.endUp.normalized * lift, endDirection = plan.endDirection, endUp = plan.endUp,
+                startBelt = plan.startBelt, startStructure = plan.startStructure, endBelt = plan.endBelt, endStructure = plan.endStructure,
+            };
+            bool ok; string why; Il2CppSystem.Decimal cost;
+            try { _lifting = true; ok = w.CheckConveyor(builder, raised, out why, out _, out cost); }
+            finally { _lifting = false; }
+            if (!ok && why != null && why.Contains("dip into the ground", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!ok) { reason = why ?? reason; return; }   // clear of the ground, but something else is in the way
+            path = w.ConveyorPath(plan.start, plan.startDirection, plan.end, plan.endDirection, plan.startUp, plan.endUp);
+            price = cost;
+            reason = why ?? "";
+            result = true;
+            return;
+        }
+    }
+
+    // Set while checking a plan PlanInsert has already laid along its belt (planning it again would move it).
+    private static bool _planned;
+
+    // The plan's start is aimed at (or beside) the middle of a belt the type goes into: lay the piece along that belt
+    // there. Aiming at a belt's end (e.g. carrying on from the last tube) continues the line instead.
     private static bool PlanInsert(MoonWorld w, BeltType type, float length, MoonWorld.ConveyorPlan plan)
     {
         _insertTarget = null;
         if (type.InsertsInto == null || type.InsertsInto.Count == 0) return false;
         var aim = plan.start;
+        var min = MinLength();
         int best = 0; float bestDistance = InsertReach, along = 0f;
         foreach (var into in type.InsertsInto)
             foreach (var belt in Belts.OfType(into))
             {
                 var path = Belts.PathOf(belt);
-                if (path == null || path.Length < length) continue;
+                if (path == null) continue;
                 var s = MoonWorld.NearestDistance(path, aim);
                 var d = (path.Point(s) - aim).magnitude;
                 if (d < bestDistance) { best = belt; bestDistance = d; along = s; }
             }
         if (best == 0) return false;
         var target = Belts.PathOf(best)!;
-        var min = MinLength();
-        // Centred on the aimed point; snapped to an end when what's left there would be too short for a belt.
-        var from = Mathf.Clamp(along - length / 2f, 0f, target.Length - length);
-        if (from < min) from = 0f;
-        if (target.Length - (from + length) < min) from = target.Length - length;
-        if (from > 0f && from < min) return false;   // too short for a piece on both sides
+        const float endGap = 0.6f;
+        if (along < endGap || along > target.Length - endGap) return false;            // at an end: carry on from it
+        if (target.Length < length + 2f * min) return false;                           // no room for a piece each side
+        var from = Mathf.Clamp(along - length / 2f, min, target.Length - length - min);
         var to = from + length;
         target.Frame(from, out var a, out var aForward, out _, out var aUp);
         target.Frame(to, out var b, out var bForward, out _, out var bUp);
@@ -148,12 +194,13 @@ internal static class BeltPatches
         }
 
         var length = path.Length;
+        var riders = Belts.Riders(target.Belt);
         var built = new List<int>();
         try
         {
             _insertFree = true;
             if (!w.TryRemoveConveyor(builder, target.Belt, out reason)) return 0;
-            int before = 0, piece = 0, after;
+            int before = 0, piece = 0, after = 0;
             if (target.From > 0f)
             {
                 _inserting = halves;
@@ -172,6 +219,7 @@ internal static class BeltPatches
                 if (!w.TryBuildConveyor(builder, Plan(target.To, length, piece, 0, takeBelt, takeStructure), out reason, out after)) throw new InvalidOperationException(reason);
                 built.Add(after);
             }
+            PutBack(w, riders, (before, 0f, target.From), (piece, target.From, target.To), (after, target.To, length));
             return piece;
         }
         catch (InvalidOperationException)
@@ -181,13 +229,53 @@ internal static class BeltPatches
             _inserting = halves;
             _insertFree = true;
             var whole = Plan(0f, length, feedBelt, feedStructure, takeBelt, takeStructure);
-            if (!w.TryBuildConveyor(builder, whole, out var again, out _)) Log.Error($"Putting a {halves.Name} back after a failed insert failed: {again}");
+            if (!w.TryBuildConveyor(builder, whole, out var again, out var restored)) Log.Error($"Putting a {halves.Name} back after a failed insert failed: {again}");
+            else PutBack(w, riders, (restored, 0f, length));
             return 0;
         }
         finally
         {
             _inserting = null;
             _insertFree = false;
+        }
+    }
+
+    // Capsules that rode the cut belt go back onto whichever new piece now covers their spot, at the same place.
+    // The game takes one capsule at a time onto a belt's entrance, so they're fed in over a few frames, front first
+    // (each one moved up to its old spot clears the entrance for the next).
+    private static void PutBack(MoonWorld w, List<(float Distance, int Id)> riders, params (int Belt, float From, float To)[] pieces)
+    {
+        foreach (var (distance, id) in riders.OrderByDescending(r => r.Distance))
+            foreach (var (belt, from, to) in pieces)
+            {
+                if (belt == 0 || distance < from || distance >= to) continue;
+                _putBack.Add((belt, id, distance - from));
+                break;
+            }
+        _putBackUntil = Time.time + 10f;
+    }
+
+    private static readonly List<(int Belt, int Id, float Distance)> _putBack = new();
+    private static readonly HashSet<int> _entering = new();
+    private static float _putBackUntil;
+
+    private static void PutBackTick(MoonWorld w)
+    {
+        if (_putBack.Count == 0) return;
+        if (Time.time > _putBackUntil) { _putBack.Clear(); _entering.Clear(); return; }
+        foreach (var belt in _putBack.Select(p => p.Belt).Distinct().ToList())
+        {
+            var next = _putBack.FindIndex(p => p.Belt == belt);
+            var (_, id, distance) = _putBack[next];
+            if (!w.conveyors.ContainsKey(belt) || !w.canisters.ContainsKey(id)) { _putBack.RemoveAt(next); _entering.Remove(id); continue; }
+            if (_entering.Contains(id))
+            {
+                // On the belt now: move it up to where it was.
+                if (!w.beltQueues.ContainsKey(belt) || !BeltState.SetRiderDistance(w.beltQueues[belt], id, distance)) continue;
+                _putBack.RemoveAt(next);
+                _entering.Remove(id);
+            }
+            else if (!w.IsCanisterRiding(id) && w.Enter(belt, id)) _entering.Add(id);
         }
     }
 
@@ -224,7 +312,11 @@ internal static class BeltPatches
     [HarmonyPrefix]
     private static void BeforeBeginConveyor()
     {
-        if (!_placing) _active = null;
+        if (_placing) return;
+        // Drawing the belts of a splitter or merger just built (or being built) with a junction type: in its belt type.
+        var (junction, at) = JunctionPatches.LastBuilt;
+        if (junction == null || Time.unscaledTime - at > 1f) junction = JunctionPatches.Pending;
+        _active = junction?.RouteType;
     }
 
     // The game checks and describes the card's kind; a belt type is a belt to it.
@@ -322,11 +414,14 @@ internal static class BeltPatches
     [HarmonyPrefix]
     private static void BeforeCheck(MoonWalker builder, MoonWorld.ConveyorPlan plan)
     {
-        if (_inserting == null) _insertTarget = null;
+        if (_lifting) return;
+        if (_inserting == null && !_planned) _insertTarget = null;
         // A fixed-length piece is laid straight from whichever end is anchored: on from its start, or back from its
         // end when only the end is snapped to something (a machine's input, a belt).
         if (ActiveFor(builder) is not { FixedLength: { } length } type || plan == null) return;
+        if (_inserting == null && _planned) return;   // already laid along the belt it goes into
         if (_inserting == null && Moon.World is { } world && PlanInsert(world, type, length, plan)) return;
+        if (_inserting != null) return;   // being built into a belt: the plan follows that belt exactly
         var startSnapped = plan.startBelt != 0 || plan.startStructure != 0;
         var endSnapped = plan.endBelt != 0 || plan.endStructure != 0;
         if (endSnapped && !startSnapped)
@@ -371,11 +466,15 @@ internal static class BeltPatches
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CheckConveyor), new[] { typeof(MoonWalker), typeof(MoonWorld.ConveyorPlan), typeof(string), typeof(MoonConveyorPath), typeof(Il2CppSystem.Decimal), typeof(bool) },
         new[] { ArgumentType.Normal, ArgumentType.Normal, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out, ArgumentType.Out })]
     [HarmonyPostfix]
-    private static void AfterCheck(MoonWorld __instance, MoonWalker builder, MoonWorld.ConveyorPlan plan, ref string reason, MoonConveyorPath path, ref Il2CppSystem.Decimal price, ref bool __result)
+    private static void AfterCheck(MoonWorld __instance, MoonWalker builder, MoonWorld.ConveyorPlan plan, ref string reason, ref MoonConveyorPath path, ref Il2CppSystem.Decimal price, ref bool __result)
     {
+        if (_lifting) return;   // our own check of a raised copy (see LiftOverGround): the game's answer as it is
         try
         {
             if (ActiveFor(builder) is not { } type) return;
+            if (!__result && _inserting == null && type.OnGround && type.MaxGroundRise > 0f && plan != null && reason != null &&
+                reason.Contains("dip into the ground", StringComparison.OrdinalIgnoreCase))
+                LiftOverGround(__instance, builder, type, plan, ref reason, ref path, ref price, ref __result);
             if (_inserting == null && _insertTarget is { } into)
             {
                 // Built into a belt: it overlaps that belt by design; the cut makes room.
@@ -393,15 +492,17 @@ internal static class BeltPatches
                 __result = false;
                 reason = $"{type.Name} pieces can be at most {max:0.#} m long.";
             }
-            if (__result && type.FixedLength is { } fixedLength && path != null && Math.Abs(path.Length - fixedLength) > 0.05f)
+            if (__result && _inserting == null && type.FixedLength is { } fixedLength && path != null && Math.Abs(path.Length - fixedLength) > 0.05f)
             {
                 __result = false;
                 reason = $"A {type.Name} is {fixedLength:0.#} m long: start it where there's room straight ahead.";
             }
-            if (__result && type.OnGround && path != null && !NearGround(type, path))
+            if (__result && type.OnGround && path != null && !NearGround(type, path, out var off))
             {
                 __result = false;
-                reason = $"{type.Name}s run along the ground: keep it within {type.MaxGroundGap:0.#} m of the ground.";
+                reason = off > 0f
+                    ? $"{type.Name}s run along the ground: this one would be {off:0.#} m above it (at most {type.MaxGroundGap:0.#}). Build it in shorter pieces that follow the slope."
+                    : $"{type.Name}s run along the ground: this one would cut {-off:0.#} m into it (at most {type.MaxGroundRise:0.#}). Build it in shorter pieces that follow the slope.";
             }
             if (type.PricePerPiece is { } piece) price = new Il2CppSystem.Decimal(Math.Round(piece, 2));
             else if (Math.Abs(type.PriceScale - 1) > 1e-9) price = Scale(price, type.PriceScale);
@@ -420,11 +521,23 @@ internal static class BeltPatches
     }
 
     // Within the type's ground gap everywhere except near the ends (which may rise to machines' ports).
-    private static bool NearGround(BeltType type, MoonConveyorPath path)
+    // Off: how far the worst spot is above the ground (or, negative, into it).
+    private static bool NearGround(BeltType type, MoonConveyorPath path, out float off)
     {
+        off = 0f;
         var length = path.Length;
-        for (var d = Math.Min(type.GroundRamp, length / 2f); d <= length - Math.Min(type.GroundRamp, length / 2f) + 0.001f; d += 1f)
-            if (!BeltLooks.GroundBelow(path, d, 0.05f, out var drop, type.MaxGroundGap + 0.1f) || drop - 0.05f > type.MaxGroundGap) return false;
+        var ramp = Math.Min(type.GroundRamp, length / 2f);
+        for (var d = ramp; d <= length - ramp + 0.001f; d += 1f)
+        {
+            if (!BeltLooks.GroundBelow(path, d, 0.05f, out var drop, type.MaxGroundGap + 0.1f, type.MaxGroundRise))
+            {
+                // Deep in a hill, or high over a dip.
+                off = BeltLooks.GroundBelow(path, d, 0.05f, out var deep, type.MaxGroundGap + 0.1f, 30f) && deep < 0f ? deep : type.MaxGroundGap + 0.1f;
+                return false;
+            }
+            drop -= 0.05f;
+            if (drop > type.MaxGroundGap || -drop > type.MaxGroundRise + 0.05f) { off = drop; return false; }
+        }
         return true;
     }
 
@@ -548,6 +661,19 @@ internal static class BeltPatches
         if (__result && belt != null) BeltState.Restyle(belt.id);
     }
 
+    // The game rebuilds belts' looks when what they join changes: hidden belts stay hidden.
+    [HarmonyPatch(typeof(MoonConveyorNetwork), nameof(MoonConveyorNetwork.RebuildJoined))]
+    [HarmonyPostfix]
+    private static void AfterRebuildJoined(MoonConveyorSnapshot belt) { if (belt != null) BeltState.KeepHidden(belt.id); }
+
+    [HarmonyPatch(typeof(MoonConveyorNetwork), nameof(MoonConveyorNetwork.RebuildStacked))]
+    [HarmonyPostfix]
+    private static void AfterRebuildStacked(MoonConveyorSnapshot belt) { if (belt != null) BeltState.KeepHidden(belt.id); }
+
+    [HarmonyPatch(typeof(MoonConveyorNetwork), nameof(MoonConveyorNetwork.RebuildAt))]
+    [HarmonyPostfix]
+    private static void AfterRebuildAt() => BeltState.KeepAllHidden();
+
     // Removing a belt: the game's dismantle effect (and its sound) plays on the type's parts too, and a hidden belt
     // stays hidden.
     private static int _dismantling;
@@ -619,7 +745,7 @@ internal static class BeltPatches
     [HarmonyPrefix]
     private static void BeforeRemove(int id)
     {
-        _ridersOfRemoved = Belts.TypeOf(id)?.DeleteRidersOnRemove == true ? Belts.Riders(id).Select(r => r.Id).ToList() : null;
+        _ridersOfRemoved = !_insertFree && Belts.TypeOf(id)?.DeleteRidersOnRemove == true ? Belts.Riders(id).Select(r => r.Id).ToList() : null;
     }
 
     // Building one: no reveal animation of the (hidden) belt.
@@ -638,7 +764,10 @@ internal static class BeltPatches
         if (_inserting != null || ActiveFor(builder) is not { FixedLength: { } length, InsertsInto: { Count: > 0 } } type || plan == null) return true;
         if (!PlanInsert(__instance, type, length, plan) || _insertTarget is not { } target) return true;
         // Check the piece itself (price, what it's next to) before cutting anything.
-        if (!__instance.CheckConveyor(builder, plan, out reason, out _, out _))
+        bool checkedOk;
+        try { _planned = true; checkedOk = __instance.CheckConveyor(builder, plan, out reason, out _, out _); }
+        finally { _planned = false; }
+        if (!checkedOk)
         {
             _insertTarget = null;
             id = 0;
@@ -696,6 +825,9 @@ internal static class BeltPatches
     [HarmonyFinalizer]
     private static void AfterReshapePreview() => _reshaping = null;
 
+    // What each preview slot last drew, so an unchanged plan isn't drawn again (a long tube's hologram is costly).
+    private static readonly Dictionary<int, (BeltType Type, Vector3 Start, Vector3 End, float Length, IntPtr Material, IntPtr Parts)> Drawn = new();
+
     [HarmonyPatch(typeof(MoonDepotBuilder), nameof(MoonDepotBuilder.BuildPreview))]
     [HarmonyPostfix]
     private static void AfterBuildPreview(MoonDepotBuilder __instance, int index, MoonConveyorPath path)
@@ -706,8 +838,19 @@ internal static class BeltPatches
             if (slots == null || index < 0 || index >= slots.Length || slots[index]?.root == null) return;
             var slot = slots[index];
             var old = slot.root.transform.Find(PreviewChild);
-            if (old != null) UnityEngine.Object.Destroy(old.gameObject);
             var type = _reshaping ?? (__instance.ConveyorMode ? _active : null);
+            if (type?.Preview != null && path != null && old != null && Drawn.TryGetValue(index, out var drawn) && drawn.Parts == old.gameObject.Pointer)
+            {
+                var material = slot.renderer != null ? slot.renderer.sharedMaterial : null;
+                if (drawn.Type == type && Math.Abs(drawn.Length - path.Length) < 0.001f && (drawn.Start - path.Point(0f)).sqrMagnitude < 1e-6f &&
+                    (drawn.End - path.Point(path.Length)).sqrMagnitude < 1e-6f && drawn.Material == (material?.Pointer ?? IntPtr.Zero))
+                {
+                    if (slot.renderer != null) slot.renderer.enabled = false;
+                    return;
+                }
+            }
+            Drawn.Remove(index);
+            if (old != null) UnityEngine.Object.Destroy(old.gameObject);
             if (type?.Preview == null || path == null)
             {
                 if (slot.renderer != null) slot.renderer.enabled = true;
@@ -717,10 +860,21 @@ internal static class BeltPatches
             var parts = new GameObject(PreviewChild);
             parts.transform.SetParent(slot.root.transform, false);
             parts.layer = slot.root.layer;
+            // The plan as the game gave it (what the next call is compared with).
+            var start = path.Point(0f);
+            var end = path.Point(path.Length);
+            var length = path.Length;
+            var inserting = false;
             // Aimed at a belt it goes into: show it built into that belt there.
+            if (_reshaping == null && type.InsertsInto is { Count: > 0 }) inserting = true;
             if (_reshaping == null && InsertPreviewPath(type, path) is { } inserted) path = inserted;
-            type.Preview(path, parts, slot.renderer != null ? slot.renderer.sharedMaterial : BeltLooks.Glow(Color.cyan));
+            var hologram = slot.renderer != null ? slot.renderer.sharedMaterial : BeltLooks.Glow(Color.cyan);
+            try { type.Preview(path, parts, hologram); }
+            catch (Exception e) { Log.Error($"{type.Name}'s Preview failed: {e}"); }
+            // Nothing drawn: fall back to the game's own hologram rather than showing nothing.
+            if (parts.GetComponentsInChildren<Renderer>(true).Length == 0 && slot.renderer != null) slot.renderer.enabled = true;
             foreach (var t in parts.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = slot.root.layer;
+            if (!inserting) Drawn[index] = (type, start, end, length, slot.renderer != null ? slot.renderer.sharedMaterial.Pointer : IntPtr.Zero, parts.Pointer);
         }
         catch (Exception e) { Log.Error("Drawing a belt type's placement hologram failed: " + e); }
     }
@@ -729,7 +883,7 @@ internal static class BeltPatches
     [HarmonyPrefix]
     private static void BeforeWorldUpdate(MoonWorld __instance)
     {
-        try { BeltState.Tick(__instance); ApplyKitLength(); }
+        try { BeltState.Tick(__instance); ApplyKitLength(); PutBackTick(__instance); }
         catch (Exception e) { Log.Error("Belt update failed: " + e); }
     }
 
@@ -777,4 +931,16 @@ internal static class BeltPatches
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.OnDestroy))]
     [HarmonyPostfix]
     private static void AfterWorldDestroyed() => BeltState.Clear();
+
+    // The network changed: cached neighbours, routes and paths are stale. The crew's updates come often and mostly
+    // change nothing: those only make the next cheap "did anything change?" check happen straight away.
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildConveyor))] [HarmonyPostfix] private static void NetBuilt() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveConveyor))] [HarmonyPostfix] private static void NetRemoved() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.CutBelt))] [HarmonyPostfix] private static void NetCut() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ShiftBelt))] [HarmonyPostfix] private static void NetShifted() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildStructure))] [HarmonyPostfix] private static void NetStructure() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildDepot))] [HarmonyPostfix] private static void NetDepot() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveStructure))] [HarmonyPostfix] private static void NetStructureRemoved() => BeltNetwork.Invalidate();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewBelts))] [HarmonyPostfix] private static void NetCrewBelts() => BeltNetwork.CheckSoon();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewStructures))] [HarmonyPostfix] private static void NetCrewStructures() => BeltNetwork.CheckSoon();
 }

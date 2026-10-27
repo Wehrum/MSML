@@ -84,6 +84,41 @@ public static class CrewMessages
     /// <summary>Sends a message to the host (nothing when hosting or not in a crew).</summary>
     public static bool SendToHost(string topic, byte[] data) => !IsHost && Send(topic, data, Host);
 
+    /// <summary>
+    /// Host only: a crewmate with MSML has loaded the moon and is ready for the host's state (raised again if their
+    /// first message may have been missed). Send what they need now rather than on the next regular update.
+    /// </summary>
+    public static event Action<ulong>? CrewmateReady;
+
+    private const string ReadyTopic = "msml.ready";
+    // Crewmate: when (after loading) to say it's ready, again in case the host wasn't listening yet.
+    private static readonly float[] ReadyAt = { 0.5f, 3f, 8f };
+    private static (ulong Lobby, IntPtr World) _readyFor;
+    private static float _readySince;
+    private static int _readySent;
+
+    // Crewmate: tells the host it's ready a few times after loading a moon (each new crew or moon starts again).
+    private static void SayReady()
+    {
+        if (IsHost || Moon.World is not { } world) return;
+        var key = (MoonSteamLobby.lobby, world.Pointer);
+        var now = UnityEngine.Time.unscaledTime;
+        if (_readyFor != key) { _readyFor = key; _readySince = now; _readySent = 0; }
+        if (_readySent >= ReadyAt.Length || now - _readySince < ReadyAt[_readySent]) return;
+        _readySent++;
+        SendToHost(ReadyTopic, Array.Empty<byte>());
+    }
+
+    private static void OnReady(ulong sender, byte[] data)
+    {
+        if (!IsHost) return;
+        foreach (var handler in CrewmateReady?.GetInvocationList() ?? Array.Empty<Delegate>())
+        {
+            try { ((Action<ulong>)handler)(sender); }
+            catch (Exception e) { Log.Error("A CrewmateReady handler failed: " + e); }
+        }
+    }
+
     private static MoonCrewSession? Session()
     {
         if (_session == null || _session.WasCollected) _session = Moon.Find<MoonCrewSession>();
@@ -108,6 +143,7 @@ public static class CrewMessages
     {
         if (!InCrew) { _markedLobby = 0; return; }
         MarkMember();
+        SayReady();
         if (Handlers.Count == 0) return;
         int count;
         try { count = SteamNetworkingMessages.ReceiveMessagesOnChannel(Channel, Incoming, Incoming.Length); }
@@ -160,6 +196,7 @@ public static class CrewMessages
             if (_applied) return;
             _applied = true;
             new Harmony("msml.api.crewmessages").PatchAll(typeof(Patches));
+            On(ReadyTopic, OnReady);
         }
 
         [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.Update))]

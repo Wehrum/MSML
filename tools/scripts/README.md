@@ -40,12 +40,17 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 - **Output:** `ctx.Log(...)`, plus the return value. Warnings and errors logged by anything while the script runs
   are included, so game-side failures show up.
 - **Lifetime:** `ctx.Harmony` patches, `ctx.OnUpdate(...)` hooks and `ctx.OnUnload(...)` cleanups are undone when the
-  same script runs again (or `dev.ps1 "unload name"`), so scripts can be edited and rerun freely.
+  same script runs again (or `dev.ps1 "unload name"`), so scripts can be edited and rerun freely. An iterator script's
+  are also undone as soon as it ends (finished, failed or timed out), so nothing it faked is left behind in the game;
+  set `ctx.KeepLoaded = true` for one that should leave its hooks running.
 - **Helpers** ([Dev.cs](../DevHarness/Dev.cs)): `Player`, `World`, `Equipment`, `Position`, `Money`,
   `Find<T>()`, `FindAll<T>()`, `Items<T>(il2cppCollection)` (so LINQ works on game lists and dictionaries),
   `Get("find:Type.member")`, `Dump(obj)`, `Describe(obj)`, `Teleport`, `Ahead(m)`, `Ground(p)`, `VehicleIndex(name)`,
   `Spawn(name)`, `Board(v)`, `Leave()`, `Driving`, `Drive(t, s, secs)`, `Click("find:...")`, `Shot(name)`,
   `WaitFor(cond)`.
+- **Build tool** ([BuildTool.cs](../DevHarness/BuildTool.cs)): drives building like a player, through the game's own
+  input: `BuildTool.Use(ctx)`, `Choose(kind)`, `StartBelt(point)`, `AimAt(point)`, `Click()`, `Back()`, `Plan()`,
+  `Stop()`. The fake aim is given back to the mouse when the script ends.
 - **Code from PowerShell:** quotes inside `-Code` get mangled by nested `powershell -File` calls; pipe the code in
   instead: `'Money = 1e6; return Money;' | powershell -File tools\cs.ps1 -Stdin`.
 
@@ -54,6 +59,8 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | Script | What it does |
 |---|---|
 | `selftest.cs` | Checks the script host end to end (hooks, patches, log capture, spawn/board/drive). |
+| `snap-test.cs` | Belt snapping through the build tool: free drawing, from a tube's end, sunk tube junction mouths, a machine's input. Builds nothing. |
+| `crew-sync-test.cs` | What crewmates rely on: typed belts found by their ends, Better Belts' booster-power message read back onto the same boosters. |
 | `patchtest.cs` | Installs a runtime Harmony patch (`install`), for checking patching on its own. |
 | `garage-probe.cs` | Lists garage offers, prices, the catalog and owned vehicles. |
 | `vehicle-shop-test.cs` | Modded vehicle in the garage: `buy` (money, buy, save, screenshot), `check`, `drive`. |
@@ -69,6 +76,8 @@ already there. Everything in the game, its interop assemblies and loaded mods ca
 | `crew-mismatch.cs` | Shows the message a player gets when joining a crew with different mods, for several pretend hosts. |
 | `tubes-test.cs` | Builds a Better Belts line (booster + tubes) next to a solar panel through the build menu's own path, then reports types, prices, power, speeds and capsule timings along it. `keep` leaves it built. |
 | `tube-cards.cs` | Renders Better Belts' build-card pictures (512x512, transparent) from real pieces built out on open ground. |
+| `junction-cards.cs` | Renders Better Belts' Tube splitter and Tube merger card pictures, from the moon's first splitter and merger (given the tube types for a moment). |
+| `perf.cs` | Frame-time profiler: times every game Update/LateUpdate and every mod hook, reports where the frame goes, frame-time percentiles, garbage collections and what ran in each spike. `perf.cs 15 ab novsync` also compares with mod looks hidden and capsule posing off (`base` first moves to the middle of the belts). |
 | `crew-test.cs` | Multiplayer as far as one player can test it: a crewmate's harvester (lamps, silo), unknown vehicles skipped, and with `lobby` an invite-only crew to check what the join check sees. |
 | `silo-test.cs` | Renders the Hex Harvester's glass silo at several fill levels (own camera and light, works at night) and lists its upgrade prices. |
 

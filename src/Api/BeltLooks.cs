@@ -48,17 +48,19 @@ public static class BeltLooks
         var normals = new List<Vector3>();
         var uvs = new List<Vector2>();
         var triangles = new List<int>();
+        // Into the parent's space with its matrix, in plain C# (see VMath: per-vertex calls into the game were slow).
+        var toLocal = space.worldToLocalMatrix;
         for (var i = 0; i < rings; i++)
         {
             var d = from + (to - from) * i / (rings - 1);
             path.Frame(d, out var position, out _, out var right, out var up);
-            var centre = position + up * (liftAt?.Invoke(d) ?? lift) + right * side;
+            var centre = VMath.Mad(position, up, liftAt?.Invoke(d) ?? lift, right, side);
             for (var s = 0; s <= sides; s++)
             {
-                var a = s * Mathf.PI * 2f / sides;
-                var outward = right * Mathf.Cos(a) + up * Mathf.Sin(a);
-                vertices.Add(space.InverseTransformPoint(centre + outward * radius));
-                normals.Add(space.InverseTransformDirection(outward));
+                var a = s * MathF.PI * 2f / sides;
+                var outward = VMath.Mad(default, right, MathF.Cos(a), up, MathF.Sin(a));
+                vertices.Add(VMath.Point(toLocal, VMath.Mad(centre, outward, radius)));
+                normals.Add(VMath.Direction(toLocal, outward));
                 uvs.Add(new Vector2((float)s / sides, d));
             }
         }
@@ -82,18 +84,18 @@ public static class BeltLooks
         void AddCap(MoonConveyorPath p, float d, float facing)
         {
             p.Frame(d, out var position, out var forward, out var right, out var up);
-            var centre = position + up * (liftAt?.Invoke(d) ?? lift) + right * side;
+            var centre = VMath.Mad(position, up, liftAt?.Invoke(d) ?? lift, right, side);
             var first = vertices.Count;
-            var normal = space.InverseTransformDirection(forward * facing);
-            vertices.Add(space.InverseTransformPoint(centre));
+            var normal = VMath.Direction(toLocal, VMath.Mul(forward, facing));
+            vertices.Add(VMath.Point(toLocal, centre));
             normals.Add(normal);
             uvs.Add(new Vector2(0.5f, 0.5f));
             for (var s = 0; s <= sides; s++)
             {
-                var a = s * Mathf.PI * 2f / sides;
-                vertices.Add(space.InverseTransformPoint(centre + (right * Mathf.Cos(a) + up * Mathf.Sin(a)) * radius));
+                var a = s * MathF.PI * 2f / sides;
+                vertices.Add(VMath.Point(toLocal, VMath.Mad(centre, right, MathF.Cos(a) * radius, up, MathF.Sin(a) * radius)));
                 normals.Add(normal);
-                uvs.Add(new Vector2(0.5f + 0.5f * Mathf.Cos(a), 0.5f + 0.5f * Mathf.Sin(a)));
+                uvs.Add(new Vector2(0.5f + 0.5f * MathF.Cos(a), 0.5f + 0.5f * MathF.Sin(a)));
             }
             for (var s = 0; s < sides; s++)
             {
@@ -104,9 +106,9 @@ public static class BeltLooks
 
         var mesh = new Mesh { name = $"Belt {belt} tube" };
         if (vertices.Count > 65000) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
-        mesh.SetVertices(ToIl2Cpp(vertices));
-        mesh.SetNormals(ToIl2Cpp(normals));
-        mesh.SetUVs(0, ToIl2Cpp(uvs));
+        mesh.vertices = ToIl2Cpp(vertices);
+        mesh.normals = ToIl2Cpp(normals);
+        mesh.uv = ToIl2Cpp(uvs);
         mesh.SetTriangles(new Il2CppStructArray<int>(triangles.ToArray()), 0);
         mesh.RecalculateBounds();
         return mesh;
@@ -127,15 +129,17 @@ public static class BeltLooks
         var normals = new List<Vector3>();
         var uvs = new List<Vector2>();
         var triangles = new List<int>();
+        var toLocal = space.worldToLocalMatrix;
         for (var i = 0; i < rows; i++)
         {
             var d = from + (to - from) * i / (rows - 1);
             path.Frame(d, out var position, out _, out var right, out var up);
-            var centre = position + up * liftAt(d);
-            foreach (var s in new[] { -1f, 1f })
+            var centre = VMath.Mad(position, up, liftAt(d));
+            var normal = VMath.Direction(toLocal, up);
+            for (var s = -1f; s <= 1f; s += 2f)
             {
-                vertices.Add(space.InverseTransformPoint(centre + right * (halfWidth * s)));
-                normals.Add(space.InverseTransformDirection(up));
+                vertices.Add(VMath.Point(toLocal, VMath.Mad(centre, right, halfWidth * s)));
+                normals.Add(normal);
                 uvs.Add(new Vector2((s + 1f) / 2f, d));
             }
             if (i == 0) continue;
@@ -143,9 +147,9 @@ public static class BeltLooks
             triangles.AddRange(new[] { a, c, b, b, c, e });
         }
         var mesh = new Mesh { name = "Belt strip" };
-        mesh.SetVertices(ToIl2Cpp(vertices));
-        mesh.SetNormals(ToIl2Cpp(normals));
-        mesh.SetUVs(0, ToIl2Cpp(uvs));
+        mesh.vertices = ToIl2Cpp(vertices);
+        mesh.normals = ToIl2Cpp(normals);
+        mesh.uv = ToIl2Cpp(uvs);
         mesh.SetTriangles(new Il2CppStructArray<int>(triangles.ToArray()), 0);
         mesh.RecalculateBounds();
         return mesh;
@@ -159,8 +163,8 @@ public static class BeltLooks
         for (var t = first; t + 2 < triangles.Count; t += 3)
         {
             var a = vertices[triangles[t]];
-            var facing = Vector3.Cross(vertices[triangles[t + 1]] - a, vertices[triangles[t + 2]] - a);
-            score += Vector3.Dot(facing, normals[triangles[t]] + normals[triangles[t + 1]] + normals[triangles[t + 2]]);
+            var facing = VMath.Cross(VMath.Sub(vertices[triangles[t + 1]], a), VMath.Sub(vertices[triangles[t + 2]], a));
+            score += VMath.Dot(facing, VMath.Add(normals[triangles[t]], VMath.Add(normals[triangles[t + 1]], normals[triangles[t + 2]])));
         }
         if (score >= 0f) return;
         for (var t = first; t + 2 < triangles.Count; t += 3) (triangles[t + 1], triangles[t + 2]) = (triangles[t + 2], triangles[t + 1]);
@@ -179,36 +183,118 @@ public static class BeltLooks
     }
 
     /// <summary>
+    /// A flat chevron (an arrow head, "&gt;" lying down) at <paramref name="position"/> pointing along
+    /// <paramref name="forward"/>, facing <paramref name="up"/>, <paramref name="size"/> metres long; in the local
+    /// space of <paramref name="space"/>. Seen from both sides. E.g. to show which way things flow.
+    /// </summary>
+    public static Mesh Chevron(Transform space, Vector3 position, Vector3 forward, Vector3 up, float size, float thickness = 0.25f)
+    {
+        forward = Vector3.ProjectOnPlane(forward, up).normalized;
+        var right = Vector3.Cross(up, forward).normalized;
+        var tip = position + forward * (size * 0.5f);
+        var back = position - forward * (size * 0.5f);
+        var half = size * 0.45f;
+        var bar = size * thickness;
+        // Two bars from the tip back to each side (outer and inner edges), drawn on both faces.
+        var points = new[]
+        {
+            tip, tip - forward * bar,
+            back + right * half, back + right * half - forward * bar,
+            back - right * half, back - right * half - forward * bar,
+        };
+        var vertices = new List<Vector3>();
+        var normals = new List<Vector3>();
+        foreach (var side in new[] { up, -up })
+            foreach (var p in points)
+            {
+                vertices.Add(space.InverseTransformPoint(p + side * 0.002f));
+                normals.Add(space.InverseTransformDirection(side));
+            }
+        var triangles = new List<int> { 0, 1, 2, 1, 3, 2, 0, 4, 1, 1, 4, 5 };
+        FaceOut(vertices, normals, triangles, 0);
+        var under = new List<int>();
+        foreach (var i in triangles) under.Add(i + 6);
+        for (var t = 0; t + 2 < under.Count; t += 3) (under[t + 1], under[t + 2]) = (under[t + 2], under[t + 1]);
+        triangles.AddRange(under);
+        var mesh = new Mesh { name = "Chevron" };
+        mesh.vertices = ToIl2Cpp(vertices);
+        mesh.normals = ToIl2Cpp(normals);
+        mesh.SetTriangles(new Il2CppStructArray<int>(triangles.ToArray()), 0);
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    /// <summary>
     /// How far below a point on the belt (<paramref name="lift"/> metres above its surface, at
     /// <paramref name="distance"/> along it) the first solid thing is: ground, a foundation, a building. Belts and
     /// capsules are skipped. Use it to stand your own supports on (with <see cref="BeltType.HideBelt"/>).
+    /// With <paramref name="maxRise"/>, ground up to that far above the point (a belt cutting through a slope) is
+    /// found too, as a negative drop.
     /// </summary>
-    public static bool GroundBelow(int belt, float distance, float lift, out float drop, float maxDrop = 30f)
+    public static bool GroundBelow(int belt, float distance, float lift, out float drop, float maxDrop, float maxRise)
     {
         drop = 0f;
         var path = Belts.PathOf(belt);
-        return path != null && GroundBelow(path, distance, lift, out drop, maxDrop);
+        return path != null && GroundBelow(path, distance, lift, out drop, maxDrop, maxRise);
     }
 
+    /// <inheritdoc cref="GroundBelow(int, float, float, out float, float, float)"/>
+    public static bool GroundBelow(int belt, float distance, float lift, out float drop, float maxDrop = 30f) =>
+        GroundBelow(belt, distance, lift, out drop, maxDrop, 0f);
+
     /// <summary>The same along a path (e.g. a planned belt).</summary>
-    public static bool GroundBelow(MoonConveyorPath path, float distance, float lift, out float drop, float maxDrop = 30f)
+    public static bool GroundBelow(MoonConveyorPath path, float distance, float lift, out float drop, float maxDrop = 30f) =>
+        GroundBelow(path, distance, lift, out drop, maxDrop, 0f);
+
+    /// <summary>The same along a path (e.g. a planned belt).</summary>
+    public static bool GroundBelow(MoonConveyorPath path, float distance, float lift, out float drop, float maxDrop, float maxRise)
     {
         drop = 0f;
         if (!Frame(path, distance, out var position, out _, out _, out var up)) return false;
-        var from = position + up * lift;
+        maxRise = Math.Max(0f, maxRise);
+        var from = VMath.Mad(position, up, lift + maxRise);
         var views = Belts.World?.ConveyorViews;
         var best = float.MaxValue;
-        foreach (var hit in Physics.RaycastAll(from, -up, maxDrop, ~0, QueryTriggerInteraction.Ignore))
+        _hits ??= new Il2CppStructArray<RaycastHit>(32);
+        if (_skipVersion != BeltNetwork.Version || Skip.Count > 8192) { Skip.Clear(); _skipVersion = BeltNetwork.Version; }
+        var count = Physics.RaycastNonAlloc(from, VMath.Mul(up, -1f), _hits, maxRise + maxDrop, ~0, QueryTriggerInteraction.Ignore);
+        var hits = _hits.AsSpan();
+        for (var i = 0; i < count; i++)
         {
-            var collider = hit.collider;
-            if (collider == null || hit.distance >= best) continue;
-            if (views != null && views.BeltAt(collider) != 0) continue;
-            if (collider.GetComponentInParent<MoonDustCanisterView>() != null) continue;
-            best = hit.distance;
+            var hit = hits[i];
+            // What each collider is (ground or not) is worked out once: asking the game about every hit of every
+            // sample was slow and left garbage on its heap.
+            var id = hit.m_Collider.m_rawData;
+            if (!Skip.TryGetValue(id, out var skip))
+            {
+                var collider = hit.collider;
+                if (collider == null) continue;
+                var capsule = collider.GetComponentInParent<MoonDustCanisterView>() != null;
+                skip = capsule ||
+                       collider.gameObject.layer == BeltState.PassLayer ||                    // walked over: sunk into the ground
+                       IsJunction(collider) ||                                               // splitters and mergers stand on the ground too
+                       (views != null && views.BeltAt(collider) != 0);
+                if (!capsule) Skip[id] = skip;   // capsules move about: never remembered
+            }
+            if (skip) continue;
+            // The surface nearest the point (looking from above, something overhead could be hit first).
+            var d = hit.distance - maxRise;
+            if (Math.Abs(d) < Math.Abs(best)) best = d;
         }
         if (best == float.MaxValue) return false;
         drop = best;
         return true;
+    }
+
+    private static Il2CppStructArray<RaycastHit>? _hits;
+    private static readonly Dictionary<ulong, bool> Skip = new();
+    private static int _skipVersion = -1;
+
+    // Part of a splitter's or merger's view (their roots are named "Splitter <id>" / "Merger <id>").
+    private static bool IsJunction(Collider collider)
+    {
+        var name = collider.transform.root.name;
+        return name.StartsWith("Splitter ", StringComparison.Ordinal) || name.StartsWith("Merger ", StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -216,12 +302,21 @@ public static class BeltLooks
     /// i x step; the last sample is at the end). Where nothing is found within <paramref name="maxDrop"/>, the value
     /// is <paramref name="maxDrop"/>. Sample with <see cref="AtDistance"/>.
     /// </summary>
-    public static float[] GroundProfile(MoonConveyorPath path, float step = 0.5f, float maxDrop = 30f)
+    public static float[] GroundProfile(MoonConveyorPath path, float step = 0.5f, float maxDrop = 30f) =>
+        GroundProfile(path, step, maxDrop, 0f);
+
+    /// <summary>
+    /// How far the ground is below the belt's surface every <paramref name="step"/> metres along it (index i is at
+    /// i x step; the last sample is at the end); negative where the ground is above it (up to
+    /// <paramref name="maxRise"/>). Where nothing is found, the value is <paramref name="maxDrop"/>. Sample with
+    /// <see cref="AtDistance"/>.
+    /// </summary>
+    public static float[] GroundProfile(MoonConveyorPath path, float step, float maxDrop, float maxRise)
     {
         var count = Math.Max(2, (int)Math.Ceiling(path.Length / step) + 1);
         var drops = new float[count];
         for (var i = 0; i < count; i++)
-            drops[i] = GroundBelow(path, Math.Min(i * step, path.Length), 0.05f, out var d, maxDrop) ? d - 0.05f : maxDrop;
+            drops[i] = GroundBelow(path, Math.Min(i * step, path.Length), 0.05f, out var d, maxDrop, maxRise) ? d - 0.05f : maxDrop;
         return drops;
     }
 
@@ -229,9 +324,9 @@ public static class BeltLooks
     public static float AtDistance(float[] profile, float step, float distance)
     {
         if (profile.Length == 0) return 0f;
-        var f = Mathf.Clamp(distance / step, 0f, profile.Length - 1);
+        var f = VMath.Clamp(distance / step, 0f, profile.Length - 1);
         var i = Math.Min((int)f, profile.Length - 2);
-        return i < 0 ? profile[0] : Mathf.Lerp(profile[i], profile[i + 1], f - i);
+        return i < 0 ? profile[0] : VMath.Lerp(profile[i], profile[i + 1], f - i);
     }
 
     /// <summary>The belt's frame at a distance along it: position on the belt's surface, and its directions.</summary>
@@ -246,7 +341,7 @@ public static class BeltLooks
     /// <summary>The same along a path.</summary>
     public static bool Frame(MoonConveyorPath path, float distance, out Vector3 position, out Vector3 forward, out Vector3 right, out Vector3 up)
     {
-        path.Frame(Mathf.Clamp(distance, 0f, path.Length), out position, out forward, out right, out up);
+        path.Frame(VMath.Clamp(distance, 0f, path.Length), out position, out forward, out right, out up);
         return true;
     }
 
@@ -290,11 +385,15 @@ public static class BeltLooks
     public static void SetGlow(Renderer renderer, Color color, float intensity = 2f)
     {
         _block ??= new MaterialPropertyBlock();
+        if (_baseColorId == 0) { _baseColorId = Shader.PropertyToID("_BaseColor"); _emissionId = Shader.PropertyToID("_EmissionColor"); }
         _block.Clear();
-        _block.SetColor("_BaseColor", color);
-        _block.SetColor("_EmissionColor", color * intensity);
+        _block.SetColor(_baseColorId, color);
+        _block.SetColor(_emissionId, color * intensity);
         renderer.SetPropertyBlock(_block);
     }
+
+    // Property ids (passing names marshals a new string into the game every call).
+    private static int _baseColorId, _emissionId;
 
     /// <summary>
     /// One of the game's conveyor materials by name, e.g. "MC - Graphite chassis", "MC - Brushed joint hardware",
@@ -309,10 +408,57 @@ public static class BeltLooks
         return null;
     }
 
-    private static Il2CppSystem.Collections.Generic.List<T> ToIl2Cpp<T>(List<T> list) where T : unmanaged
+    /// <summary>
+    /// Any loaded material by name, e.g. the ground's ("MoonSurface") or rocks' ("MoonRock"). Null if not found.
+    /// Searches everything loaded the first time, so look up once (e.g. when styling) rather than every frame.
+    /// </summary>
+    public static Material? SceneMaterial(string name)
     {
-        var result = new Il2CppSystem.Collections.Generic.List<T>(list.Count);
-        foreach (var item in list) result.Add(item);
+        if (GameCache.TryGetValue("scene:" + name, out var cached) && cached != null && !cached.WasCollected) return cached;
+        if (SceneMiss.TryGetValue(name, out var retry) && Time.unscaledTime < retry) return null;
+        foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
+            if (m != null && m.name == name) return GameCache["scene:" + name] = m;
+        SceneMiss[name] = Time.unscaledTime + 10f;
+        return null;
+    }
+
+    private static readonly Dictionary<string, float> SceneMiss = new();
+
+    /// <summary>
+    /// A mesh from world-space vertices, in the local space of <paramref name="space"/>. Without normals they're worked
+    /// out from the triangles (smooth).
+    /// </summary>
+    public static Mesh WorldMesh(Transform space, IReadOnlyList<Vector3> vertices, IReadOnlyList<Vector3>? normals, IReadOnlyList<int> triangles,
+        string name = "MSML mesh", IReadOnlyList<Vector2>? uvs = null)
+    {
+        var toLocal = space.worldToLocalMatrix;
+        var local = new List<Vector3>(vertices.Count);
+        for (var i = 0; i < vertices.Count; i++) local.Add(VMath.Point(toLocal, vertices[i]));
+        var mesh = new Mesh { name = name };
+        if (local.Count > 65000) mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        mesh.vertices = ToIl2Cpp(local);
+        if (uvs != null) mesh.uv = ToIl2Cpp(new List<Vector2>(uvs));
+        var tris = new Il2CppStructArray<int>(triangles.Count);
+        var span = tris.AsSpan();
+        for (var i = 0; i < triangles.Count; i++) span[i] = triangles[i];
+        mesh.SetTriangles(tris, 0);
+        if (normals != null)
+        {
+            var localNormals = new List<Vector3>(normals.Count);
+            for (var i = 0; i < normals.Count; i++) localNormals.Add(VMath.Direction(toLocal, normals[i]));
+            mesh.normals = ToIl2Cpp(localNormals);
+        }
+        else mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // One copy into a game array (adding items to a game list one by one was a call into the game per vertex).
+    private static Il2CppStructArray<T> ToIl2Cpp<T>(List<T> list) where T : unmanaged
+    {
+        var result = new Il2CppStructArray<T>(list.Count);
+        var span = result.AsSpan();
+        for (var i = 0; i < list.Count; i++) span[i] = list[i];
         return result;
     }
 }

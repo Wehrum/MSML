@@ -18,6 +18,7 @@ internal static class SiloFill
         public Transform? Dust;
         public float Shown = -1;
         public bool GarageLook;
+        public float NextGarageLook;
     }
 
     private static readonly Dictionary<IntPtr, State> States = new();
@@ -47,11 +48,16 @@ internal static class SiloFill
             if (state.Dust == null) return;
             state.GarageLook = false;
         }
-        // Models built while a save loads come before the garages; use the garage silo's dust once one exists.
-        if (!state.GarageLook && HarvesterModel.GarageMaterial("Garage - Container dust") is { } garageDust)
+        // Models built while a save loads come before the garages; use the garage silo's dust once one exists
+        // (looked for every couple of seconds: it searches the garages' renderers).
+        if (!state.GarageLook && Time.unscaledTime >= state.NextGarageLook)
         {
-            foreach (var r in state.Dust.GetComponentsInChildren<Renderer>(true)) r.sharedMaterial = garageDust;
-            state.GarageLook = true;
+            state.NextGarageLook = Time.unscaledTime + 2f;
+            if (HarvesterModel.GarageMaterial("Garage - Container dust") is { } garageDust)
+            {
+                foreach (var r in state.Dust.GetComponentsInChildren<Renderer>(true)) r.sharedMaterial = garageDust;
+                state.GarageLook = true;
+            }
         }
 
         state.Shown = state.Shown < 0 ? target : Mathf.MoveTowards(state.Shown, target, Rate * Time.deltaTime);

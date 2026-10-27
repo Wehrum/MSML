@@ -25,8 +25,9 @@ namespace MoonSweepMods.DevHarness;
 /// </para>
 /// <para>
 /// Running a script again replaces the previous version: its Harmony patches (<c>ctx.Harmony</c>), per-frame hooks
-/// (<c>ctx.OnUpdate</c>) and <c>ctx.OnUnload</c> cleanups are undone first. Warnings and errors logged by the game or any
-/// mod while a script runs are added to its output.
+/// (<c>ctx.OnUpdate</c>) and <c>ctx.OnUnload</c> cleanups are undone first. An iterator script's are also undone as soon
+/// as it ends (finished, failed or timed out) unless it sets <c>ctx.KeepLoaded</c>. Warnings and errors logged by the
+/// game or any mod while a script runs are added to its output.
 /// </para>
 /// </summary>
 internal static class ScriptHost
@@ -140,7 +141,10 @@ internal static class ScriptHost
         {
             ctx.Log("EXCEPTION: " + e.InnerException);
             ctx.EndCapture();
-            return ctx.TakeOutput();
+            var failed = ctx.TakeOutput();
+            // Failed: undo whatever it had patched or hooked so far.
+            if (!ctx.KeepLoaded) { ctx.Dispose(); Loaded.Remove(name); }
+            return failed;
         }
         finally
         {
@@ -210,6 +214,13 @@ internal static class ScriptHost
         if (ctx.Name != "warmup") _finished = output;   // nobody is waiting for the warm-up's output
         _running = null;
         _coroutine = null;
+        // Finished, failed or timed out: undo its patches, hooks and changes now (a fake input left behind by a script
+        // that failed half way kept steering the player's aim), unless it asked to stay.
+        if (!ctx.KeepLoaded && Loaded.TryGetValue(ctx.Name, out var loaded) && loaded == ctx)
+        {
+            ctx.Dispose();
+            Loaded.Remove(ctx.Name);
+        }
     }
 }
 
@@ -346,6 +357,12 @@ public sealed class ScriptContext : ILogListener
 
     /// <summary>Seconds an iterator script may run before it's stopped. Default 120.</summary>
     public float Timeout { get; set; } = 120f;
+
+    /// <summary>
+    /// Keep an iterator script's patches, hooks and OnUnload cleanups after it ends (until it's run again or unloaded).
+    /// By default they're undone as soon as it ends, whether it finished, failed or timed out.
+    /// </summary>
+    public bool KeepLoaded { get; set; }
 
     /// <summary>Harmony patches made through this are removed when the script is reloaded or unloaded.</summary>
     public Harmony Harmony => _harmony ??= new Harmony("devscript." + Name);

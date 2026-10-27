@@ -23,10 +23,18 @@ internal static class HarvesterRig
     private const string Lights = "Vehicle lights";
     private const string Placed = " (placed)";
 
+    // Per model: when it was last checked. The work is done once; it's checked again every second in case the game
+    // rebuilt the sway assembly or lights (walking the model by name every frame was costly).
+    private static readonly Dictionary<IntPtr, float> Checked = new();
+
     /// <param name="model">The vehicle's model root (its MoonAuthoredVehicleView), scaled by the physics scale.</param>
     public static void Update(Transform? model)
     {
         if (model == null) return;
+        var now = Time.unscaledTime;
+        if (Checked.TryGetValue(model.Pointer, out var next) && now < next) return;
+        if (Checked.Count > 64) Checked.Clear();
+        Checked[model.Pointer] = now + 1f;
         var sprung = Find(model, Sprung);
         var visuals = Find(model, Visuals);
         // Same frame as the root at rest (the assembly is at the origin), so the local pose carries over unchanged.

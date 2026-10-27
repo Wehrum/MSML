@@ -13,7 +13,8 @@ namespace MSML;
 /// <para>
 /// Types are saved in <see cref="MoonData"/> ("msml.belts": type id -> belt ids). In a crew the host's table is the
 /// truth: crewmates ask the host to change a belt, and the host sends the whole table to everyone when it changes
-/// (and every few seconds, so a lost message heals itself).
+/// (and every few seconds, so a lost message heals itself). Crew messages name belts by their ends as well as their
+/// ids, since each machine counts its own belt ids.
 /// </para>
 /// <para>
 /// Speed: belts far from the camera are only stepped every few frames, with the time they missed kept in
@@ -24,10 +25,14 @@ namespace MSML;
 internal static class BeltState
 {
     private const string DataKey = "msml.belts";
-    private const string SetTopic = "msml.belts.set";
-    private const string TableTopic = "msml.belts.table";
+    // Crew messages carry each belt's ends: belt ids are counted on each machine, so a crewmate's ids needn't match
+    // the host's. Belts are matched by where they start and end.
+    private const string SetTopic = "msml.belts.set2";
+    private const string TableTopic = "msml.belts.table2";
     private const float MissingGrace = 10f;   // a typed belt may arrive after its type (crew); keep the type that long
     private const float PendingGrace = 5f;    // a crewmate's own change survives tables sent before the host saw it
+    private const float AwaitGrace = 15f;     // a typed belt not built here yet: keep looking for it that long
+    private const float MatchReach = 0.15f;   // ends this close are the same belt's
     private const float MaxOwed = 1f;
 
     private static readonly Dictionary<int, BeltType> Typed = new();
@@ -35,6 +40,9 @@ internal static class BeltState
     private static readonly Dictionary<int, float> Speeds = new();
     private static readonly Dictionary<int, float> MissingSince = new();
     private static readonly Dictionary<int, (BeltType? Type, float At)> Pending = new();
+    // Crew: typed belts heard of whose belt isn't here yet (by its ends).
+    private static readonly List<(BeltType? Type, Vector3 Start, Vector3 End, int Id, float Since)> Awaiting = new();
+    private static readonly Dictionary<int, (Vector3 Start, Vector3 End)> KnownEnds = new();
     private static Dictionary<string, List<int>> _unknown = new();
 
     private static MoonWorld? _world;
@@ -71,6 +79,7 @@ internal static class BeltState
         MoonData.Loaded += OnLoaded;
         CrewMessages.On(SetTopic, OnSetRequest);
         CrewMessages.On(TableTopic, OnTable);
+        CrewMessages.CrewmateReady += _ => _broadcast = true;
     }
 
     // ---- types ---------------------------------------------------------------------------------
@@ -98,7 +107,9 @@ internal static class BeltState
             Typed[belt] = type;
             if (!ByType.TryGetValue(type, out var set)) ByType[type] = set = new HashSet<int>();
             set.Add(belt);
+            if (EndsOf(belt, out var start, out var end)) KnownEnds[belt] = (start, end);
         }
+        else KnownEnds.Remove(belt);
         // Speeds set for the old type don't carry over.
         Speeds.Remove(belt);
         _changed = true;
@@ -124,7 +135,13 @@ internal static class BeltState
         Speeds.Clear();
         MissingSince.Clear();
         Pending.Clear();
+        Awaiting.Clear();
+        KnownEnds.Clear();
         Riders.Clear();
+        Queues.Clear();
+        MissingFrame.Clear();
+        ViewSeen.Clear();
+        BeltNetwork.Invalidate();
         foreach (var belt in Styled.Keys.ToList()) DropStyle(belt);
         HiddenViews.Clear();
         PassColliders.Clear();
@@ -200,6 +217,30 @@ internal static class BeltState
         World?.ConveyorViews?.SetTreadHidden(belt, hide);
     }
 
+    private static bool _keepingHidden;
+
+    /// <summary>After the game rebuilds a belt's look: a hidden belt (and its tread) stays hidden.</summary>
+    internal static void KeepHidden(int belt)
+    {
+        if (_keepingHidden || TypeOf(belt)?.HideBelt != true || Belts.ViewOf(belt) is not { } view) return;
+        try { _keepingHidden = true; HideGameBelt(belt, view, true); }
+        catch (Exception e) { Log.Error($"Keeping belt {belt} hidden failed: {e.Message}"); }
+        finally { _keepingHidden = false; }
+    }
+
+    internal static void KeepAllHidden() => _rehideAll = true;
+
+    private static bool _rehideAll;
+
+    private static void RehideAll()
+    {
+        if (!_rehideAll) return;
+        _rehideAll = false;
+        foreach (var (type, belts) in ByType)
+            if (type.HideBelt)
+                foreach (var belt in belts.ToList()) KeepHidden(belt);
+    }
+
     // The game hides a belt while previewing changes to it (a splitter cutting it, an end being moved).
     private static bool GameHidden(int belt)
     {
@@ -207,20 +248,48 @@ internal static class BeltState
         return views != null && views.ContainsKey(belt) && views[belt]?.hidden == true;
     }
 
-    // Styles follow their belt's view: hidden with it, gone with it; the game's belt stays hidden.
-    private static void SyncStyles()
+    // Styles follow their belt's view: hidden with it, gone with it; the game's belt stays hidden. The game's view is
+    // only gone through (renderers, colliders) when it's a new one for the belt, plus a few belts each time as a
+    // safety net: fetching every view's components every time left a lot of garbage on the game's heap.
+    private static readonly Dictionary<int, IntPtr> ViewSeen = new();
+    private static int _deepCursor;
+    private const int DeepPerSync = 12;
+
+    private static void SyncStyles(bool building)
     {
-        foreach (var (belt, parts) in Styled.ToList())
+        var belts = Styled.Keys.ToList();
+        var deepFrom = belts.Count == 0 ? 0 : _deepCursor % belts.Count;
+        _deepCursor = deepFrom + DeepPerSync;
+        for (var i = 0; i < belts.Count; i++)
         {
+            var belt = belts[i];
+            var parts = Styled[belt];
             var view = Belts.ViewOf(belt);
-            if (parts == null || parts.WasCollected || view == null || TypeOf(belt)?.Style == null) { DropStyle(belt); continue; }
-            var shown = view.activeInHierarchy && !GameHidden(belt);
+            var type = TypeOf(belt);
+            if (parts == null || parts.WasCollected || view == null || type?.Style == null) { DropStyle(belt); ViewSeen.Remove(belt); continue; }
+            // The game hides a belt while previewing a change to it: only while building.
+            var shown = view.activeInHierarchy && !(building && GameHidden(belt));
             if (parts.activeSelf != shown) parts.SetActive(shown);
-            if (TypeOf(belt)?.HideBelt == true)
+            var deep = (i - deepFrom + belts.Count) % belts.Count < DeepPerSync;
+            if (!deep && ViewSeen.TryGetValue(belt, out var seen) && seen == view.Pointer) continue;
+            ViewSeen[belt] = view.Pointer;
+            if (type.HideBelt)
                 foreach (var r in view.GetComponents<Renderer>())
-                    if (r.enabled) HideGameBelt(belt, view, true);
+                    if (r.enabled) { HideGameBelt(belt, view, true); break; }
+            if (type.PassThrough) SetPassThrough(view, true, type.ColliderTop);
         }
-        LetMoversThrough();
+        // Pass-through belts without a look of their own.
+        if (building) return;
+        foreach (var (type, typed) in ByType)
+        {
+            if (!type.PassThrough || type.Style != null) continue;
+            foreach (var belt in typed)
+                if (Belts.ViewOf(belt) is { } view && (!ViewSeen.TryGetValue(belt, out var seen) || seen != view.Pointer))
+                {
+                    ViewSeen[belt] = view.Pointer;
+                    SetPassThrough(view, true, type.ColliderTop);
+                }
+        }
     }
 
     // PassThrough belts: their colliders go on a layer that collides with nothing (vehicles and players pass over),
@@ -229,17 +298,7 @@ internal static class BeltState
     private static readonly Dictionary<IntPtr, (int Layer, Vector3 Position)> PassColliders = new();
     private static bool _passLayerReady;
 
-    private static void LetMoversThrough()
-    {
-        foreach (var (type, belts) in ByType)
-        {
-            if (!type.PassThrough) continue;
-            foreach (var belt in belts)
-                if (Belts.ViewOf(belt) is { } view) SetPassThrough(view, true, type.ColliderTop);
-        }
-    }
-
-    private static void SetPassThrough(GameObject view, bool pass, float? top = null)
+    internal static void SetPassThrough(GameObject view, bool pass, float? top = null)
     {
         if (pass && !_passLayerReady)
         {
@@ -298,13 +357,73 @@ internal static class BeltState
         {
             if (type.RiderPose == null) continue;
             foreach (var belt in belts)
-            {
-                if (!world.beltQueues.ContainsKey(belt)) continue;
-                var queue = world.beltQueues[belt];
-                if (queue == null || queue.Count == 0) continue;
-                foreach (var (distance, id) in ReadQueue(queue)) Riders[id] = (belt, distance, type);
-            }
+                if (QueueOf(world, belt) is { } queue) MapQueue(queue.Pointer, belt, type);
         }
+        // Capsules passing through splitters and mergers whose type draws them as on a belt type.
+        foreach (var (structure, junction) in JunctionState.All)
+        {
+            if (junction.RouteType is not { RiderPose: not null } type) continue;
+            foreach (var route in BeltNetwork.Routes(structure))
+                if (QueueOf(world, route) is { } queue) MapQueue(queue.Pointer, route, type);
+        }
+    }
+
+    private static void MapQueue(IntPtr list, int belt, BeltType type)
+    {
+        EnsureOffsets(list);
+        var count = System.Runtime.InteropServices.Marshal.ReadInt32(list + _sizeOffset);
+        if (count <= 0) return;
+        var items = System.Runtime.InteropServices.Marshal.ReadIntPtr(list + _itemsOffset);
+        for (var i = 0; i < count; i++)
+        {
+            var entry = items + 0x20 + i * 8;
+            Riders[System.Runtime.InteropServices.Marshal.ReadInt32(entry + 4)] =
+                (belt, BitConverter.Int32BitsToSingle(System.Runtime.InteropServices.Marshal.ReadInt32(entry)), type);
+        }
+    }
+
+    // Each belt's capsule queue, looked up from the game at most once a second (the list object stays the same while
+    // the belt exists; holding it keeps it alive, so a replaced one is only stale until the next refresh). Read
+    // directly from memory every frame: asking the game every frame left garbage on its heap. The game only makes a
+    // queue when the first capsule arrives, so a belt without one is asked about again each frame (else the first
+    // capsules through a new tube, splitter or merger weren't posed, popping up out of the tube).
+    private static readonly Dictionary<int, Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>>> Queues = new();
+    private static readonly Dictionary<int, int> MissingFrame = new();
+    private static float _queuesUntil;
+    private static int _queuesVersion = -1;
+
+    private static Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>>? QueueOf(MoonWorld world, int belt)
+    {
+        var now = Time.unscaledTime;
+        if (now >= _queuesUntil || _queuesVersion != BeltNetwork.Version)
+        {
+            Queues.Clear();
+            MissingFrame.Clear();
+            _queuesUntil = now + 1f;
+            _queuesVersion = BeltNetwork.Version;
+        }
+        if (Queues.TryGetValue(belt, out var queue)) return queue;
+        var frame = Time.frameCount;
+        if (MissingFrame.TryGetValue(belt, out var checkedAt) && checkedAt == frame) return null;
+        var queues = world.beltQueues;
+        if (!queues.ContainsKey(belt)) { MissingFrame[belt] = frame; return null; }
+        MissingFrame.Remove(belt);
+        return Queues[belt] = queues[belt];
+    }
+
+    // How many capsules are on a queue (read directly).
+    private static int CountOf(Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>> queue)
+    {
+        EnsureOffsets(queue.Pointer);
+        return System.Runtime.InteropServices.Marshal.ReadInt32(queue.Pointer + _sizeOffset);
+    }
+
+    private static void EnsureOffsets(IntPtr list)
+    {
+        if (_itemsOffset >= 0) return;
+        var klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(list);
+        _itemsOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "_items"));
+        _sizeOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "_size"));
     }
 
     /// <summary>True if the capsule rides a belt whose type poses it.</summary>
@@ -322,16 +441,28 @@ internal static class BeltState
         }
     }
 
+    /// <summary>Moves a rider to a distance along its belt (written straight into the belt's queue).</summary>
+    internal static bool SetRiderDistance(Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>> queue, int id, float distance)
+    {
+        ReadQueue(queue);   // makes sure the field offsets are known
+        var list = queue.Pointer;
+        var items = System.Runtime.InteropServices.Marshal.ReadIntPtr(list + _itemsOffset);
+        var count = System.Runtime.InteropServices.Marshal.ReadInt32(list + _sizeOffset);
+        for (var i = 0; i < count; i++)
+        {
+            var entry = items + 0x20 + i * 8;
+            if (System.Runtime.InteropServices.Marshal.ReadInt32(entry + 4) != id) continue;
+            System.Runtime.InteropServices.Marshal.WriteInt32(entry, BitConverter.SingleToInt32Bits(distance));
+            return true;
+        }
+        return false;
+    }
+
     // The interop garbles List<(float, int)>, so read the list's array directly: (distance, capsule id) pairs.
     internal static List<(float Distance, int Id)> ReadQueue(Il2CppSystem.Collections.Generic.List<Il2CppSystem.ValueTuple<float, int>> queue)
     {
         var list = queue.Pointer;
-        if (_itemsOffset < 0)
-        {
-            var klass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(list);
-            _itemsOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "_items"));
-            _sizeOffset = (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(klass, "_size"));
-        }
+        EnsureOffsets(list);
         var items = System.Runtime.InteropServices.Marshal.ReadIntPtr(list + _itemsOffset);
         var count = System.Runtime.InteropServices.Marshal.ReadInt32(list + _sizeOffset);
         var result = new List<(float, int)>(count);
@@ -350,12 +481,14 @@ internal static class BeltState
     {
         if (_world == null || _world.Pointer != world.Pointer) { _world = world; _beltCount = -1; }
         ApplySpeeds(world);
+        RehideAll();
         var now = Time.unscaledTime;
 
         if (now >= _nextSync)
         {
-            _nextSync = now + 0.1f;
-            SyncStyles();
+            var building = BeltPatches.Building;
+            _nextSync = now + (building ? 0.1f : 0.3f);
+            SyncStyles(building);
         }
         if (now >= _nextReconcile)
         {
@@ -376,7 +509,7 @@ internal static class BeltState
         {
             _broadcast = false;
             _nextBroadcast = now + 10f;
-            CrewMessages.SendToCrew(TableTopic, Encoding.UTF8.GetBytes(Serialize()));
+            CrewMessages.SendToCrew(TableTopic, EncodeTable());
         }
         if (_changed)
         {
@@ -390,14 +523,12 @@ internal static class BeltState
         if (Typed.Count == 0 && Speeds.Count == 0) return;
         var dt = Time.deltaTime;
         if (dt <= 0f) return;
-        var queues = world.beltQueues;
         var owed = world.beltOwed;
         void Boost(int belt, float speed)
         {
-            if (speed <= 1.001f || !queues.ContainsKey(belt)) return;
-            var queue = queues[belt];
-            if (queue == null || queue.Count == 0) return;
-            var current = owed.ContainsKey(belt) ? owed[belt] : 0f;
+            // Empty belts are skipped by reading their queue directly (no call into the game).
+            if (speed <= 1.001f || QueueOf(world, belt) is not { } queue || CountOf(queue) == 0) return;
+            owed.TryGetValue(belt, out var current);
             owed[belt] = Math.Min(current + (speed - 1f) * dt, MaxOwed);
         }
         foreach (var (belt, type) in Typed)
@@ -413,13 +544,21 @@ internal static class BeltState
         foreach (var belt in Typed.Keys.ToList())
         {
             if (world.conveyors.ContainsKey(belt)) { MissingSince.Remove(belt); continue; }
-            if (!MissingSince.TryGetValue(belt, out var since)) { MissingSince[belt] = now; continue; }
+            if (!MissingSince.TryGetValue(belt, out var since))
+            {
+                MissingSince[belt] = now;
+                // Crewmate: the game may put the belt back under another id (the host's truth); it keeps its type.
+                if (!CrewMessages.IsHost && KnownEnds.TryGetValue(belt, out var ends))
+                    Awaiting.Add((Typed[belt], ends.Start, ends.End, belt, now));
+                continue;
+            }
             if (now - since > MissingGrace) Forget(belt);
         }
         foreach (var belt in Speeds.Keys.ToList())
             if (!Belts.Exists(belt)) Speeds.Remove(belt);
         foreach (var (belt, p) in Pending.ToList())
             if (now - p.At > PendingGrace) Pending.Remove(belt);
+        MatchAwaiting(world, now);
     }
 
     // ---- saving and loading --------------------------------------------------------------------
@@ -478,31 +617,183 @@ internal static class BeltState
 
     // ---- crew ----------------------------------------------------------------------------------
 
+    // The ends index for FindByEnds, rebuilt when the network changes.
+    private static Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>>? _endsIndex;
+    private static int _endsIndexVersion = -1;
+
+    /// <summary>The belt here with these ends, or 0 (belt ids differ between crewmates' machines; ends don't).</summary>
+    internal static int FindByEnds(Vector3 start, Vector3 end)
+    {
+        var w = World;
+        if (w == null) return 0;
+        if (_endsIndexVersion != BeltNetwork.Version) { _endsIndex = null; _endsIndexVersion = BeltNetwork.Version; }
+        return Match(w, 0, start, end, ref _endsIndex);
+    }
+
+    internal static bool Ends(int belt, out Vector3 start, out Vector3 end) => EndsOf(belt, out start, out end);
+
+    private static bool EndsOf(int belt, out Vector3 start, out Vector3 end)
+    {
+        start = end = default;
+        var w = World;
+        if (w == null || !w.conveyors.ContainsKey(belt)) return false;
+        var c = w.conveyors[belt];
+        if (c == null) return false;
+        start = c.start;
+        end = c.end;
+        return true;
+    }
+
+    // The belt here with these ends (the same id first), or 0.
+    private static int Match(MoonWorld w, int id, Vector3 start, Vector3 end, ref Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>>? index)
+    {
+        static bool Near(Vector3 a, Vector3 b) => (a - b).sqrMagnitude < MatchReach * MatchReach;
+        if (w.conveyors.ContainsKey(id) && w.conveyors[id] is { } same && Near(same.start, start) && Near(same.end, end)) return id;
+        index ??= IndexEnds(w);
+        var cell = Vector3Int.FloorToInt(start);
+        for (var x = -1; x <= 1; x++)
+            for (var y = -1; y <= 1; y++)
+                for (var z = -1; z <= 1; z++)
+                    if (index.TryGetValue(cell + new Vector3Int(x, y, z), out var list))
+                        foreach (var b in list)
+                            if (Near(b.Start, start) && Near(b.End, end)) return b.Belt;
+        return 0;
+    }
+
+    // Every belt by the metre cell its start is in.
+    private static Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>> IndexEnds(MoonWorld w)
+    {
+        var index = new Dictionary<Vector3Int, List<(int, Vector3, Vector3)>>();
+        foreach (var belt in Keys(w.conveyors))
+        {
+            var c = w.conveyors[belt];
+            if (c == null) continue;
+            var cell = Vector3Int.FloorToInt(c.start);
+            if (!index.TryGetValue(cell, out var list)) index[cell] = list = new List<(int, Vector3, Vector3)>();
+            list.Add((belt, c.start, c.end));
+        }
+        return index;
+    }
+
+    private static void WriteVector(System.IO.BinaryWriter w, Vector3 v) { w.Write(v.x); w.Write(v.y); w.Write(v.z); }
+    private static Vector3 ReadVector(System.IO.BinaryReader r) => new(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+
+    // Set: belt id, its ends, type id ("" = plain).
     private static byte[] EncodeSet(int belt, BeltType? type)
     {
-        var id = Encoding.UTF8.GetBytes(type?.Id ?? "");
-        var bytes = new byte[4 + id.Length];
-        BitConverter.GetBytes(belt).CopyTo(bytes, 0);
-        id.CopyTo(bytes, 4);
-        return bytes;
+        using var stream = new System.IO.MemoryStream();
+        using var w = new System.IO.BinaryWriter(stream);
+        EndsOf(belt, out var start, out var end);
+        w.Write(belt);
+        WriteVector(w, start);
+        WriteVector(w, end);
+        w.Write(type?.Id ?? "");
+        w.Flush();
+        return stream.ToArray();
+    }
+
+    // Table: per type, its id and its belts (id and ends).
+    private static byte[] EncodeTable()
+    {
+        using var stream = new System.IO.MemoryStream();
+        using var w = new System.IO.BinaryWriter(stream);
+        var types = ByType.Where(t => t.Value.Count > 0).ToList();
+        w.Write(types.Count);
+        foreach (var (type, belts) in types)
+        {
+            var known = belts.Where(b => EndsOf(b, out _, out _)).ToList();
+            w.Write(type.Id);
+            w.Write(known.Count);
+            foreach (var belt in known)
+            {
+                EndsOf(belt, out var start, out var end);
+                w.Write(belt);
+                WriteVector(w, start);
+                WriteVector(w, end);
+            }
+        }
+        w.Flush();
+        return stream.ToArray();
     }
 
     // Host: a crewmate built or changed a belt.
     private static void OnSetRequest(ulong sender, byte[] data)
     {
-        if (!CrewMessages.IsHost || data.Length < 4) return;
-        var belt = BitConverter.ToInt32(data, 0);
-        var id = Encoding.UTF8.GetString(data, 4, data.Length - 4);
-        var type = id.Length == 0 ? null : Belts.TypeById(id);
-        if (id.Length > 0 && type == null) { Log.Warning($"A crewmate set belt {belt} to unknown type '{id}'."); return; }
-        SetType(belt, type, false);
-        _broadcast = true;
+        if (!CrewMessages.IsHost || World is not { } world) return;
+        Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>>? index = null;
+        try
+        {
+            using var r = new System.IO.BinaryReader(new System.IO.MemoryStream(data));
+            var id = r.ReadInt32();
+            var start = ReadVector(r);
+            var end = ReadVector(r);
+            var typeId = r.ReadString();
+            var type = typeId.Length == 0 ? null : Belts.TypeById(typeId);
+            if (typeId.Length > 0 && type == null) { Log.Warning($"A crewmate set a belt to unknown type '{typeId}'."); return; }
+            var belt = Match(world, id, start, end, ref index);
+            if (belt != 0) SetType(belt, type, false);
+            else if (type != null) Awaiting.Add((type, start, end, id, Time.unscaledTime));   // its belt hasn't reached us yet
+            _broadcast = true;
+        }
+        catch (Exception e) { Log.Warning("A crewmate's belt change couldn't be read: " + e.Message); }
     }
 
     // Crewmate: the host's table.
     private static void OnTable(ulong sender, byte[] data)
     {
-        if (CrewMessages.IsHost || sender != CrewMessages.Host) return;
-        Load(Encoding.UTF8.GetString(data), true);
+        if (CrewMessages.IsHost || sender != CrewMessages.Host || World is not { } world) return;
+        var wanted = new Dictionary<int, BeltType>();
+        var now = Time.unscaledTime;
+        Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>>? index = null;
+        Awaiting.Clear();
+        try
+        {
+            using var r = new System.IO.BinaryReader(new System.IO.MemoryStream(data));
+            var types = r.ReadInt32();
+            for (var t = 0; t < types; t++)
+            {
+                var type = Belts.TypeById(r.ReadString());
+                var count = r.ReadInt32();
+                for (var i = 0; i < count; i++)
+                {
+                    var id = r.ReadInt32();
+                    var start = ReadVector(r);
+                    var end = ReadVector(r);
+                    if (type == null) continue;
+                    var belt = Match(world, id, start, end, ref index);
+                    if (belt != 0) wanted[belt] = type;
+                    else Awaiting.Add((type, start, end, id, now));
+                }
+            }
+        }
+        catch (Exception e) { Log.Warning("The host's belt types couldn't be read: " + e.Message); return; }
+        // A crewmate's own recent change stands until the host's table includes it.
+        foreach (var (belt, p) in Pending)
+        {
+            if (now - p.At > PendingGrace) continue;
+            if (p.Type == null) wanted.Remove(belt);
+            else wanted[belt] = p.Type;
+        }
+        foreach (var belt in Typed.Keys.ToList())
+            if (!wanted.ContainsKey(belt)) Assign(belt, null);
+        foreach (var (belt, type) in wanted) Assign(belt, type);
+    }
+
+    // Typed belts that weren't here when heard of: type them when they arrive.
+    private static void MatchAwaiting(MoonWorld world, float now)
+    {
+        Dictionary<Vector3Int, List<(int Belt, Vector3 Start, Vector3 End)>>? index = null;
+        for (var i = Awaiting.Count - 1; i >= 0; i--)
+        {
+            var (type, start, end, id, since) = Awaiting[i];
+            var belt = Match(world, id, start, end, ref index);
+            if (belt != 0)
+            {
+                if (CrewMessages.IsHost) { SetType(belt, type, false); _broadcast = true; }
+                else if (!Pending.ContainsKey(belt)) Assign(belt, type);
+                Awaiting.RemoveAt(i);
+            }
+            else if (now - since > AwaitGrace) Awaiting.RemoveAt(i);
+        }
     }
 }

@@ -15,11 +15,21 @@ public sealed class Puffs
     private static readonly List<Puffs> All = new();
     private static Material? _material;
     private static bool _ticking;
+    private static readonly System.Random Random = new();
+    private static float Rand() => (float)Random.NextDouble() * 2f - 1f;
 
     private readonly Transform _parent;
     private readonly Vector3 _localPosition, _localDirection;
-    private readonly List<(Transform Puff, MeshRenderer Renderer, Vector3 Velocity, float Born)> _live = new();
+    // Live puffs (world space), drawn as camera-facing quads in one mesh: one object and draw call per stream, and
+    // arrays reused every frame (a GameObject and mesh per puff, recoloured every frame, filled the game's heap).
+    private readonly List<(Vector3 Position, Vector3 Velocity, float Born)> _live = new();
     private float _owed;
+    private GameObject? _object;
+    private Mesh? _mesh;
+    private MeshRenderer? _renderer;
+    private Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>? _vertices;
+    private Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color>? _colors;
+    private int _capacity;
 
     /// <summary>Puffs per second (0 stops it; puffs already out fade away).</summary>
     public float Rate { get; set; }
@@ -51,102 +61,139 @@ public sealed class Puffs
 
     private static void TickAll()
     {
+        if (All.Count == 0) return;
         var camera = Camera.main;
         var dt = Time.deltaTime;
+        Vector3 eye = default, right = Vector3.right, up = Vector3.up;
+        if (camera != null)
+        {
+            var t = camera.transform;
+            eye = t.position; right = t.right; up = t.up;
+        }
+        var now = Time.time;
         for (var i = All.Count - 1; i >= 0; i--)
         {
             var p = All[i];
-            if (p._parent == null || p._parent.WasCollected) { p.Clear(); All.RemoveAt(i); continue; }
-            p.Tick(camera, dt);
+            if (p._parent == null || p._parent.WasCollected) { p.Dispose(); All.RemoveAt(i); continue; }
+            p.Tick(camera != null, eye, right, up, dt, now);
         }
     }
 
-    private void Tick(Camera? camera, float dt)
+    // Where the stream comes from and whether its parent is shown: looked up a few times a second (parents don't
+    // move; every call into the game leaves a little garbage on its heap).
+    private Vector3 _origin, _direction;
+    private bool _parentShown, _shown;
+    private float _nextLook = -1f;
+
+    private void Tick(bool hasCamera, Vector3 eye, Vector3 right, Vector3 up, float dt, float now)
     {
-        var shown = _parent.gameObject.activeInHierarchy;
-        var origin = _parent.TransformPoint(_localPosition);
-        var near = camera != null && (camera.transform.position - origin).sqrMagnitude < VisibleDistance * VisibleDistance;
-        if (!shown || !near) { Clear(); _owed = 0f; return; }
+        if (now >= _nextLook || _nextLook < 0f)
+        {
+            _nextLook = now + 0.25f;
+            _origin = _parent.TransformPoint(_localPosition);
+            _direction = _parent.TransformDirection(_localDirection);
+            _parentShown = _parent.gameObject.activeInHierarchy;
+        }
+        var origin = _origin;
+        var near = hasCamera && VMath.SqrDistance(eye, origin) < VisibleDistance * VisibleDistance;
+        if (!near || !_parentShown)
+        {
+            if (_shown) Hide();
+            _owed = 0f;
+            return;
+        }
+
+        var capacity = Math.Max(4, (int)Math.Ceiling(Rate * Lifetime * 1.3f) + 2);
+        if (_mesh == null || _mesh.WasCollected || capacity > _capacity) Build(capacity, origin);
 
         _owed += Rate * dt;
-        var direction = _parent.TransformDirection(_localDirection);
         while (_owed >= 1f)
         {
             _owed -= 1f;
-            var spread = UnityEngine.Random.insideUnitSphere * 0.25f;
-            var velocity = (direction + spread).normalized * Speed * UnityEngine.Random.Range(0.6f, 1f);
-            _live.Add(Spawn(origin, velocity));
+            if (_live.Count >= _capacity) continue;
+            var spread = new Vector3(Rand(), Rand(), Rand());
+            var velocity = VMath.Mul(VMath.Normalize(VMath.Mad(_direction, spread, 0.25f)), Speed * (0.6f + 0.4f * (float)Random.NextDouble()));
+            _live.Add((origin, velocity, now));
         }
 
-        var now = Time.time;
+        var vertices = _vertices!.AsSpan();
+        var colors = _colors!.AsSpan();
+        var n = 0;
         for (var i = _live.Count - 1; i >= 0; i--)
         {
-            var (puff, renderer, velocity, born) = _live[i];
+            var (position, velocity, born) = _live[i];
             var age = (now - born) / Lifetime;
-            if (age >= 1f || puff == null || puff.WasCollected)
-            {
-                if (puff != null && !puff.WasCollected) Destroy(puff);
-                _live.RemoveAt(i);
-                continue;
-            }
-            puff.position += velocity * dt * (1f - age * 0.6f);
-            puff.localScale = Vector3.one * Size * Mathf.Lerp(0.5f, 1.6f, age);
-            if (camera != null) puff.rotation = Quaternion.LookRotation(puff.position - camera.transform.position, camera.transform.up);
+            if (age >= 1f) { _live.RemoveAt(i); continue; }
+            position = VMath.Mad(position, velocity, dt * (1f - age * 0.6f));
+            _live[i] = (position, velocity, born);
+            var half = Size * (0.5f + 1.1f * age) * 0.5f;
             var alpha = Color.a * (age < 0.15f ? age / 0.15f : 1f - (age - 0.15f) / 0.85f);
-            Tint(puff, new Color(Color.r, Color.g, Color.b, alpha));
+            var colour = new Color(Color.r, Color.g, Color.b, alpha);
+            var v = n * 4;
+            vertices[v] = VMath.Mad(position, right, -half, up, -half); vertices[v + 1] = VMath.Mad(position, right, half, up, -half);
+            vertices[v + 2] = VMath.Mad(position, right, -half, up, half); vertices[v + 3] = VMath.Mad(position, right, half, up, half);
+            colors[v] = colour; colors[v + 1] = colour; colors[v + 2] = colour; colors[v + 3] = colour;
+            n++;
         }
+        // Unused quads: nothing to draw.
+        for (var v = n * 4; v < vertices.Length; v++) { vertices[v] = origin; colors[v] = default; }
+        _mesh!.vertices = _vertices;
+        _mesh.colors = _colors;
+        if (!_shown) { _shown = true; _renderer!.enabled = true; }
+    }
+    // The stream's object (in world space, so the quads are written in world coordinates) and its fixed mesh layout.
+    private void Build(int capacity, Vector3 origin)
+    {
+        if (_object == null || _object.WasCollected)
+        {
+            _object = new GameObject("MSML puffs");
+            _object.AddComponent<MeshFilter>();
+            _renderer = _object.AddComponent<MeshRenderer>();
+            _renderer.sharedMaterial = Material();
+            _renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _renderer.receiveShadows = false;
+        }
+        if (_mesh != null && !_mesh.WasCollected) UnityEngine.Object.Destroy(_mesh);
+        _capacity = capacity;
+        _mesh = new Mesh { name = "MSML puffs" };
+        _mesh.MarkDynamic();
+        _vertices = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector3>(capacity * 4);
+        _colors = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color>(capacity * 4);
+        var uvs = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector2>(capacity * 4);
+        var triangles = new int[capacity * 6];
+        for (var q = 0; q < capacity; q++)
+        {
+            uvs[q * 4] = new Vector2(0f, 0f); uvs[q * 4 + 1] = new Vector2(1f, 0f);
+            uvs[q * 4 + 2] = new Vector2(0f, 1f); uvs[q * 4 + 3] = new Vector2(1f, 1f);
+            var v = q * 4;
+            triangles[q * 6] = v; triangles[q * 6 + 1] = v + 2; triangles[q * 6 + 2] = v + 1;
+            triangles[q * 6 + 3] = v + 1; triangles[q * 6 + 4] = v + 2; triangles[q * 6 + 5] = v + 3;
+        }
+        _mesh.vertices = _vertices;
+        _mesh.uv = uvs;
+        _mesh.colors = _colors;
+        _mesh.SetTriangles(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>(triangles), 0);
+        // Fixed bounds around the outlet, as far as a puff can travel and grow.
+        var reach = Speed * Lifetime + Size * 2f + 0.5f;
+        _mesh.bounds = new Bounds(origin, Vector3.one * reach * 2f);
+        _object.GetComponent<MeshFilter>().sharedMesh = _mesh;
     }
 
-    // Each puff has its own small quad; its vertex colours carry the colour and fade (the game's puff shader uses them).
-    private static void Tint(Transform puff, Color color)
+    private void Hide()
     {
-        var mesh = puff.GetComponent<MeshFilter>()?.sharedMesh;
-        if (mesh == null) return;
-        var colors = new Il2CppSystem.Collections.Generic.List<Color>(4);
-        for (var i = 0; i < 4; i++) colors.Add(color);
-        mesh.SetColors(colors);
-    }
-
-    private (Transform, MeshRenderer, Vector3, float) Spawn(Vector3 at, Vector3 velocity)
-    {
-        var go = new GameObject("Puff");
-        go.transform.position = at;
-        go.AddComponent<MeshFilter>().sharedMesh = NewQuad();
-        var renderer = go.AddComponent<MeshRenderer>();
-        renderer.sharedMaterial = Material();
-        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        renderer.receiveShadows = false;
-        return (go.transform, renderer, velocity, Time.time);
-    }
-
-    private static void Destroy(Transform puff)
-    {
-        var mesh = puff.GetComponent<MeshFilter>()?.sharedMesh;
-        if (mesh != null) UnityEngine.Object.Destroy(mesh);
-        UnityEngine.Object.Destroy(puff.gameObject);
-    }
-
-    private void Clear()
-    {
-        foreach (var (puff, _, _, _) in _live)
-            if (puff != null && !puff.WasCollected) Destroy(puff);
         _live.Clear();
+        _shown = false;
+        if (_renderer != null && !_renderer.WasCollected) _renderer.enabled = false;
     }
 
-    private static Mesh NewQuad()
+    private void Dispose()
     {
-        var mesh = new Mesh { name = "MSML puff" };
-        var vertices = new Il2CppSystem.Collections.Generic.List<Vector3>(4);
-        vertices.Add(new Vector3(-0.5f, -0.5f, 0f)); vertices.Add(new Vector3(0.5f, -0.5f, 0f));
-        vertices.Add(new Vector3(-0.5f, 0.5f, 0f)); vertices.Add(new Vector3(0.5f, 0.5f, 0f));
-        var uvs = new Il2CppSystem.Collections.Generic.List<Vector2>(4);
-        uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(1f, 0f)); uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(1f, 1f));
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<int>(new[] { 0, 2, 1, 1, 2, 3 }), 0);
-        return mesh;
+        _live.Clear();
+        if (_mesh != null && !_mesh.WasCollected) UnityEngine.Object.Destroy(_mesh);
+        if (_object != null && !_object.WasCollected) UnityEngine.Object.Destroy(_object);
+        _mesh = null;
+        _object = null;
     }
-
     // The game's own dust puff (soft and round, coloured by vertex colours); else unlit and transparent with a soft round texture.
     private static Material Material()
     {

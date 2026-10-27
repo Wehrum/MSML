@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
-    Development loop: closes the game, builds and deploys everything, relaunches through Steam, and waits for the
-    main menu. Needs the DevHarness plugin (built as part of the solution).
+    Development loop: builds everything (stopping there if it fails, with the game still running), closes the game,
+    deploys, relaunches through Steam, and waits for the main menu. Needs the DevHarness plugin (built as part of the
+    solution).
 #>
 [CmdletBinding()]
 param(
@@ -15,6 +16,13 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $GameDir "BepInEx\LogOutput.log"
 
+$solution = Join-Path $RepoRoot "MoonSweepMods.sln"
+if (-not $NoBuild) {
+    # Compile first without deploying (the running game locks its DLLs): a broken build leaves the game running.
+    & dotnet build $solution -c Release -nologo -v q "-p:GameDir=$GameDir" -p:DeployToGame=false | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Build failed (the game was left running)." }
+}
+
 $proc = Get-Process MoonSweepers -ErrorAction SilentlyContinue
 if ($proc) {
     Write-Host "Closing the game..."
@@ -26,8 +34,8 @@ if ($proc) {
 Remove-Item (Join-Path $GameDir "BepInEx\devharness.in"), (Join-Path $GameDir "BepInEx\devharness.out") -ErrorAction SilentlyContinue
 
 if (-not $NoBuild) {
-    & dotnet build (Join-Path $RepoRoot "MoonSweepMods.sln") -c Release -nologo -v q "-p:GameDir=$GameDir" | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "Build failed." }
+    & dotnet build $solution -c Release -nologo -v q "-p:GameDir=$GameDir" | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Deploying failed." }
 }
 
 $started = Get-Date

@@ -43,6 +43,9 @@ public sealed class BeltType
     /// <summary>Build menu section: "Logistics" by default.</summary>
     public string Category { get; set; } = "Logistics";
 
+    /// <summary>Sub-tab of its tab to put the card in (see <see cref="BuildMenu"/>), e.g. "Tubes"; null: with the game's cards.</summary>
+    public string? Section { get; set; }
+
     /// <summary>Price compared to a plain belt of the same length (refunds follow it).</summary>
     public double PriceScale { get; set; } = 1;
 
@@ -79,6 +82,13 @@ public sealed class BeltType
 
     /// <summary>With <see cref="OnGround"/>: the most the belt may be above the ground, in metres.</summary>
     public float MaxGroundGap { get; set; } = 1.4f;
+
+    /// <summary>
+    /// With <see cref="OnGround"/>: the most the ground may come up over the belt, in metres (a straight belt laid
+    /// over a hump or along a slope cuts into it; its look should follow the ground there, see
+    /// <see cref="BeltLooks.GroundProfile"/>).
+    /// </summary>
+    public float MaxGroundRise { get; set; } = 0f;
 
     /// <summary>With <see cref="OnGround"/>: how far from each end the belt may rise to meet machines, in metres.</summary>
     public float GroundRamp { get; set; } = 1.6f;
@@ -184,6 +194,7 @@ public static class Belts
         Registered.Add(type);
         BeltPatches.Apply();
         BeltPatches.AddCard(type);
+        if (type.Section != null) BuildMenu.SetSection(type.Kind, type.Section);
         Log.Info($"Registered belt type {type} (card kind {type.Kind}, x{type.Speed} speed, x{type.PriceScale} price)");
         return type;
     }
@@ -234,12 +245,7 @@ public static class Belts
     }
 
     /// <summary>The belt's path (length, points along it), or null.</summary>
-    public static MoonConveyorPath? PathOf(int belt)
-    {
-        var w = World;
-        if (w == null || !Exists(belt)) return null;
-        try { return w.BeltPath(belt); } catch { return null; }
-    }
+    public static MoonConveyorPath? PathOf(int belt) => BeltNetwork.PathOf(belt);
 
     /// <summary>The belt's view in the world, or null when it has none right now (far away, or not built yet).</summary>
     public static GameObject? ViewOf(int belt)
@@ -283,6 +289,21 @@ public static class Belts
 
     /// <summary>Routes capsules take inside a structure (e.g. a splitter's two), as belt ids usable with <see cref="SetSpeed"/>.</summary>
     public static List<int> RoutesThrough(int structure) => BeltNetwork.Routes(structure);
+
+    /// <summary>
+    /// The splitters and mergers capsules pass through between this belt's end and the belts <see cref="Downstream"/>
+    /// gives (several when junctions are joined straight to each other), nearest first.
+    /// </summary>
+    public static List<int> JunctionsAfter(int belt) => BeltNetwork.Through(belt, true);
+
+    /// <summary>
+    /// A belt's start and end. Belt ids are counted on each machine, so in crew messages name belts by their ends and
+    /// find them again with <see cref="FindByEnds"/>.
+    /// </summary>
+    public static bool EndsOf(int belt, out Vector3 start, out Vector3 end) => BeltState.Ends(belt, out start, out end);
+
+    /// <summary>The belt with these ends (within a few centimetres), or 0.</summary>
+    public static int FindByEnds(Vector3 start, Vector3 end) => BeltState.FindByEnds(start, end);
 
     internal static MoonWorld? World => BeltState.World;
 
