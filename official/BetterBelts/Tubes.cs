@@ -150,7 +150,7 @@ internal static class Tubes
     }
 
     // A pipe rises out of the ground where it meets something that isn't a pipe: when the network changes, pipes
-    // whose neighbours changed are drawn again.
+    // whose neighbours changed are drawn again (tube splitters and mergers too, whose tubes rise to plain belts).
     private static void RejoinPipes()
     {
         foreach (var belt in Belts.OfType(Tube).Concat(Belts.OfType(Booster)).ToList())
@@ -161,6 +161,75 @@ internal static class Tubes
             Joined[belt] = now;
             if (known) Belts.Restyle(belt);
         }
+        var junctions = Junctions.OfType(Splitter).Concat(Junctions.OfType(Merger)).ToHashSet();
+        foreach (var structure in JunctionPorts.Keys.Where(s => !junctions.Contains(s)).ToList()) JunctionPorts.Remove(structure);
+        foreach (var structure in junctions)
+        {
+            var now = PortsOf(structure);
+            var known = JunctionPorts.TryGetValue(structure, out var before);
+            JunctionPorts[structure] = now;
+            if (known && !SameRises(before!, now))
+            {
+                RouteRises.Clear();
+                Junctions.Restyle(structure);
+            }
+        }
+    }
+
+    // ---- tube splitters and mergers meeting plain belts ----------------------------------------
+
+    // Each tube splitter's and merger's ports and whether something that isn't a pipe (a plain belt, a machine) meets
+    // it there: its tube rises out of the ground to that port, as tubes rise to meet machines.
+    private static readonly Dictionary<int, List<(Vector3 Port, bool Rises)>> JunctionPorts = new();
+    // Each route through one: whether it rises at its start and end.
+    private static readonly Dictionary<int, (bool From, bool To)> RouteRises = new();
+
+    private static List<(Vector3 Port, bool Rises)> PortsOf(int structure)
+    {
+        var ports = new List<(Vector3, bool)>();
+        if (Moon.World is not { } w || Junctions.TypeOf(structure) is not { } type || !Junctions.Pose(structure, out var position, out var rotation)) return ports;
+        foreach (var (locals, output) in new[] { (Junctions.InputsOf(type.BaseKind), false), (Junctions.OutputsOf(type.BaseKind), true) })
+            foreach (var local in locals)
+            {
+                var port = position + rotation * local;
+                int belt, other;
+                if (output) w.Takers(port, out belt, out other);
+                else w.Feeders(port, out belt, out other);
+                var rises = belt != 0 ? !IsPipe(belt) : other != 0 && other != structure && !IsPipeJunction(other);
+                ports.Add((port, rises));
+            }
+        return ports;
+    }
+
+    private static bool SameRises(List<(Vector3 Port, bool Rises)> a, List<(Vector3 Port, bool Rises)> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (var i = 0; i < a.Count; i++)
+            if (a[i].Rises != b[i].Rises || VMath.SqrDistance(a[i].Port, b[i].Port) > 1e-4f) return false;
+        return true;
+    }
+
+    // Whether the port at this point rises (false if it isn't one of the ports).
+    private static bool RisesAt(List<(Vector3 Port, bool Rises)>? ports, Vector3 point)
+    {
+        if (ports == null) return false;
+        foreach (var (port, rises) in ports)
+            if (VMath.SqrDistance(port, point) < 0.09f) return rises;
+        return false;
+    }
+
+    // A route's rises, from the ports of the splitter or merger it starts at.
+    private static (bool From, bool To) RouteRisesOf(int route, MoonConveyorPath path)
+    {
+        if (RouteRises.TryGetValue(route, out var known)) return known;
+        var start = path.Point(0f);
+        var end = path.Point(path.Length);
+        foreach (var (_, ports) in JunctionPorts)
+        {
+            if (!ports.Exists(p => VMath.SqrDistance(p.Port, start) < 0.09f)) continue;
+            return RouteRises[route] = (RisesAt(ports, start), RisesAt(ports, end));
+        }
+        return (false, false);   // its splitter or merger isn't known yet: not kept
     }
 
     public static void ApplyPrices()
@@ -206,19 +275,29 @@ internal static class Tubes
     }
 
     // 1 where the pipe is sunk into the ground, easing to 0 at ends that meet something that isn't a pipe.
-    private static float Buried((bool From, bool To) joined, float length, float distance)
+    private static float Buried((bool From, bool To) joined, float length, float distance, float ramp = Ramp)
     {
         var t = 1f;
-        if (!joined.From) t = Math.Min(t, distance / Ramp);
-        if (!joined.To) t = Math.Min(t, (length - distance) / Ramp);
+        if (!joined.From) t = Math.Min(t, distance / ramp);
+        if (!joined.To) t = Math.Min(t, (length - distance) / ramp);
         return VMath.SmoothStep(0f, 1f, t);
     }
+
+    // A splitter's or merger's tubes are short: they rise over part of their length (the other end stays sunk to
+    // meet a tube).
+    private static float JunctionRamp(float length) => Math.Min(Ramp, length * 0.7f);
 
     /// <summary>The pipe's centre above the belt's surface at a distance along it, and how buried it is there.</summary>
     private static (float Centre, float Buried) Shape(int belt, MoonConveyorPath path, float distance)
     {
-        // A route through a tube splitter or merger: in its tubes, at its floor (the route runs at its ports' height).
-        if (belt < 0) return (-DropAt(GroundOf(belt, path), distance) + BuriedCentre, 1f);
+        // A route through a tube splitter or merger: in its tubes, at its floor (the route runs at its ports' height),
+        // rising to ports a plain belt or machine meets.
+        if (belt < 0)
+        {
+            var rises = RouteRisesOf(belt, path);
+            var routeBuried = Buried((!rises.From, !rises.To), path.Length, distance, JunctionRamp(path.Length));
+            return (VMath.Lerp(RaisedCentre, -DropAt(GroundOf(belt, path), distance) + BuriedCentre, routeBuried), routeBuried);
+        }
         // Boosters are too short to rise: they always sit in the ground (tubes rise to meet machines).
         var buried = Belts.TypeOf(belt) == Booster ? 1f : Buried(JoinedOf(belt), path.Length, distance);
         var centre = VMath.Lerp(RaisedCentre, -DropAt(GroundOf(belt, path), distance) + BuriedCentre, buried);
@@ -586,7 +665,7 @@ internal static class Tubes
     // splitters in orange (one in, two out), mergers in cyan (two in, one out). The hologram also has arrows; a placed
     // one (structure) has a pressure ring on its single tube, and is dug in like the tubes.
     private static void DrawJunction(Transform t, int baseKind, Vector3 position, Quaternion rotation, Material glass, Material? metal, Material? dark,
-        Material? hologram = null, int structure = 0)
+        Material? hologram = null, int structure = 0, List<(Vector3 Port, bool Rises)>? ports = null)
     {
         var colour = JunctionColour(baseKind);
         var trim = hologram ?? BeltLooks.Glow(colour, 0.6f);
@@ -599,9 +678,12 @@ internal static class Tubes
         {
             var first = index++ == 0;
             var length = path.Length;
-            // Sunk into the ground like the tubes joining it (so they meet on slopes and bumps too).
+            // Sunk into the ground like the tubes joining it (so they meet on slopes and bumps too), rising out of it
+            // to ports a plain belt or machine meets.
             var drops = BeltLooks.GroundProfile(path, ProfileStep, MaxDrop + 0.5f, MaxRise + 0.3f);
-            float Centre(float d) => -DropAt(drops, d) + BuriedCentre;
+            var rises = (From: RisesAt(ports, path.Point(0f)), To: RisesAt(ports, path.Point(length)));
+            var ramp = JunctionRamp(length);
+            float Centre(float d) => VMath.Lerp(RaisedCentre, -DropAt(drops, d) + BuriedCentre, Buried((!rises.From, !rises.To), length, d, ramp));
             var tube = BeltLooks.Tube(path, t, TubeRadius, 0f, sides: 22, step: 0.2f, liftAt: Centre);
             if (tube != null) BeltLooks.Show(t, "Glass", tube, glass, shadows: false);
             // Collars at the ports in metal, a coloured band in the middle, and a wide one where the single tube is
@@ -630,6 +712,24 @@ internal static class Tubes
                 if (floor != null) BeltLooks.Show(t, "Track", floor, dark, shadows: false);
             }
             if (structure == 0) continue;
+            // A post under each end that rises, like a tube's where it meets a machine.
+            if (metal != null)
+                foreach (var (at, open) in new[] { (Mathf.Min(0.45f, length / 2f), rises.From), (Mathf.Max(length - 0.45f, length / 2f), rises.To) })
+                {
+                    if (!open || !BeltLooks.Frame(path, at, out var p, out var forward, out _, out var pathUp)) continue;
+                    var drop = DropAt(drops, at);
+                    var bottom = Centre(at) - TubeRadius;
+                    var height = bottom + drop;
+                    if (height < 0.08f) continue;
+                    var post = Primitive(PrimitiveType.Cylinder, t, "Post", metal);
+                    post.position = p + pathUp * (bottom - height / 2f);
+                    post.rotation = Quaternion.LookRotation(forward, pathUp);
+                    post.localScale = new Vector3(0.07f, height / 2f, 0.07f);
+                    var foot = Primitive(PrimitiveType.Cylinder, t, "Foot", metal);
+                    foot.position = p + pathUp * (-drop + 0.02f);
+                    foot.rotation = post.rotation;
+                    foot.localScale = new Vector3(0.24f, 0.02f, 0.24f);
+                }
             // The pressure ring: one, on the single tube just past its wide band.
             if (first)
             {
@@ -640,7 +740,9 @@ internal static class Tubes
             // Dug in on the outside of each route (the side away from the other one).
             BeltLooks.Frame(path, length / 2f, out _, out _, out var right, out _);
             var outside = Math.Sign(VMath.Dot(right, across)) * Math.Sign(outerX);
-            if (outside != 0) AddSpoil(t, path, 0f, length, d => Centre(d) - BuriedCentre, structure * 7 + index, false, false, outside);
+            if (outside != 0)
+                AddSpoil(t, path, rises.From ? ramp : 0f, rises.To ? length - ramp : length, d => Centre(d) - BuriedCentre, structure * 7 + index,
+                    rises.From, rises.To, outside);
         }
         if (structure == 0) return;
         JunctionRings[structure] = rings;
@@ -656,7 +758,9 @@ internal static class Tubes
         var metal = BeltLooks.GameMaterial("MC - Brushed joint hardware") ?? BeltLooks.Glow(Color.gray, 0f);
         var dark = TrackMaterial();
         var tint = Color.Lerp(new Color(0.62f, 0.84f, 1f), JunctionColour(type.BaseKind), 0.35f);
-        DrawJunction(parts.transform, type.BaseKind, position, rotation, BeltLooks.Glass(new Color(tint.r, tint.g, tint.b, 0.36f)), metal, dark, structure: structure);
+        var ports = JunctionPorts[structure] = PortsOf(structure);
+        RouteRises.Clear();
+        DrawJunction(parts.transform, type.BaseKind, position, rotation, BeltLooks.Glass(new Color(tint.r, tint.g, tint.b, 0.36f)), metal, dark, structure: structure, ports: ports);
     }
 
     // The hologram in the game's colour (it shows whether it can be built), with the arrows and bands glowing in the

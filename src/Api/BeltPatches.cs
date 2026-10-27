@@ -91,7 +91,7 @@ internal static class BeltPatches
 
     // While inserting: the type being built (the piece, or the cut belt's halves), and that it's free.
     private static BeltType? _inserting;
-    private static bool _insertFree;
+    private static bool _insertFree, _forceInsert;
     // The belt the current plan would be built into, and where along it (start, end distance).
     private static (int Belt, float From, float To)? _insertTarget;
     private const float InsertReach = 1.6f;
@@ -200,6 +200,7 @@ internal static class BeltPatches
         {
             _insertFree = true;
             if (!w.TryRemoveConveyor(builder, target.Belt, out reason)) return 0;
+            _forceInsert = true;
             int before = 0, piece = 0, after = 0;
             if (target.From > 0f)
             {
@@ -228,6 +229,8 @@ internal static class BeltPatches
             foreach (var id in built) w.TryRemoveConveyor(builder, id, out _);
             _inserting = halves;
             _insertFree = true;
+            _forceInsert = true;
+            Log.Warning($"Building a {type.Name} into a {halves.Name} failed ({reason}): putting the {halves.Name} back.");
             var whole = Plan(0f, length, feedBelt, feedStructure, takeBelt, takeStructure);
             if (!w.TryBuildConveyor(builder, whole, out var again, out var restored)) Log.Error($"Putting a {halves.Name} back after a failed insert failed: {again}");
             else PutBack(w, riders, (restored, 0f, length));
@@ -237,6 +240,7 @@ internal static class BeltPatches
         {
             _inserting = null;
             _insertFree = false;
+            _forceInsert = false;
         }
     }
 
@@ -546,6 +550,17 @@ internal static class BeltPatches
             else if (Math.Abs(type.PriceScale - 1) > 1e-9) price = Scale(price, type.PriceScale);
         }
         catch (Exception e) { Log.Error("Checking a belt type's plan failed: " + e); }
+        finally
+        {
+            // The pieces of an insert retrace a belt that was there (the piece itself was checked before the cut): the
+            // game re-checking them (a tube dipping into a bump, swept ground) mustn't leave the belt cut.
+            if (_forceInsert && !__result && path != null)
+            {
+                Log.Info($"Building a piece of a cut {_inserting?.Name ?? "belt"} the game turned down ({reason}): built anyway.");
+                __result = true;
+                reason = "";
+            }
+        }
     }
 
     // The planned piece would start at the end of, or end at the start of, a piece of the same type.
@@ -979,6 +994,13 @@ internal static class BeltPatches
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildStructure))] [HarmonyPostfix] private static void NetStructure() => BeltNetwork.Changed();
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryBuildDepot))] [HarmonyPostfix] private static void NetDepot() => BeltNetwork.Changed();
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.TryRemoveStructure))] [HarmonyPostfix] private static void NetStructureRemoved() => BeltNetwork.Changed();
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewBelts))] [HarmonyPostfix] private static void NetCrewBelts() => BeltNetwork.CheckSoon();
+    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewBelts))]
+    [HarmonyPostfix]
+    private static void NetCrewBelts(MoonWorld __instance)
+    {
+        BeltNetwork.CheckSoon();
+        try { BeltState.AfterCrewBelts(__instance); }
+        catch (Exception e) { Log.Error("Mapping capsules after the host's belt update failed: " + e); }
+    }
     [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.ApplyCrewStructures))] [HarmonyPostfix] private static void NetCrewStructures() => BeltNetwork.CheckSoon();
 }

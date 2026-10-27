@@ -39,7 +39,7 @@ internal static class Pressure
     // Each tube splitter's or merger's pressure (0-1) at its middle, for its ring.
     private static readonly Dictionary<int, float> JunctionPressure = new();
     private static bool _dirty = true;
-    private static float _nextSolve, _nextSettings;
+    private static float _nextSolve, _nextSettings, _nextCrewSolve;
     private static bool _bright;
 
     // The host's settings while in someone else's crew.
@@ -97,6 +97,9 @@ internal static class Pressure
         if (!_dirty && now >= _nextSolve)
         {
             _nextSolve = now + 1f;
+            // In a crew, belts also arrive from the network: worked out again now and then regardless, so nothing
+            // missed stands for long.
+            if (CrewMessages.InCrew && now >= _nextCrewSolve) { _nextCrewSolve = now + 5f; _dirty = true; }
             try
             {
                 UpdatePowerUsers();

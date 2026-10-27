@@ -138,6 +138,8 @@ internal static class BeltState
         Awaiting.Clear();
         KnownEnds.Clear();
         Riders.Clear();
+        RouteTypes.Clear();
+        _crewRiders = null;
         Queues.Clear();
         Missing.Clear();
         ViewSeen.Clear();
@@ -422,6 +424,7 @@ internal static class BeltState
     internal static void MapRiders(MoonWorld world)
     {
         Riders.Clear();
+        RouteTypes.Clear();
         foreach (var (type, belts) in ByType)
         {
             if (type.RiderPose == null) continue;
@@ -433,9 +436,103 @@ internal static class BeltState
         {
             if (junction.RouteType is not { RiderPose: not null } type) continue;
             foreach (var route in BeltNetwork.Routes(structure))
+            {
+                RouteTypes[route] = type;
                 if (QueueOf(world, route) is { } queue) MapQueue(queue.Pointer, route, type);
+            }
+        }
+        if (CrewMessages.InCrew && !CrewMessages.IsHost) MapCrewRiders(world);
+    }
+
+    private static readonly Dictionary<int, BeltType> RouteTypes = new();
+
+    // A crewmate's game also draws the capsules the host says are on belts near it (its rider list), easing them to
+    // the host's place: some of those aren't in the crewmate's own queues (yet), so weren't posed and were drawn at a
+    // plain belt's height, floating over the tubes. Read directly from memory (thousands of riders, every frame).
+    private static Il2CppSystem.Collections.Generic.List<MoonWorld.CrewRider>? _crewRiders;
+    private static float _crewRidersUntil;
+    private static int _crewStride = -1, _crewId, _crewBelt, _crewDistance;
+
+    private static void MapCrewRiders(MoonWorld world)
+    {
+        var now = Time.unscaledTime;
+        if (_crewRiders == null || _crewRiders.WasCollected || now >= _crewRidersUntil)
+        {
+            _crewRiders = world.crewRiders;
+            _crewRidersUntil = now + 1f;
+        }
+        if (_crewRiders == null) return;
+        var list = _crewRiders.Pointer;
+        EnsureOffsets(list);
+        var count = System.Runtime.InteropServices.Marshal.ReadInt32(list + _sizeOffset);
+        if (count <= 0) return;
+        var items = System.Runtime.InteropServices.Marshal.ReadIntPtr(list + _itemsOffset);
+        if (items == IntPtr.Zero || !CrewRiderLayout(items)) return;
+        for (var i = 0; i < count; i++)
+        {
+            var entry = items + 0x20 + i * _crewStride;
+            var id = System.Runtime.InteropServices.Marshal.ReadInt32(entry + _crewId);
+            if (Riders.ContainsKey(id)) continue;
+            var belt = System.Runtime.InteropServices.Marshal.ReadInt32(entry + _crewBelt);
+            var type = belt > 0 ? (Typed.TryGetValue(belt, out var t) ? t : null) : RouteTypes.TryGetValue(belt, out var r) ? r : null;
+            if (type?.RiderPose == null) continue;
+            Riders[id] = (belt, BitConverter.Int32BitsToSingle(System.Runtime.InteropServices.Marshal.ReadInt32(entry + _crewDistance)), type);
         }
     }
+
+    // Where a rider's id, belt and distance are in the list's array (the element size from the array's class).
+    private static bool CrewRiderLayout(IntPtr array)
+    {
+        if (_crewStride >= 0) return _crewStride > 0;
+        _crewStride = 0;
+        try
+        {
+            var arrayClass = Il2CppInterop.Runtime.IL2CPP.il2cpp_object_get_class(array);
+            var element = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_element_class(arrayClass);
+            var stride = Il2CppInterop.Runtime.IL2CPP.il2cpp_array_element_size(arrayClass);
+            int Offset(string name)
+            {
+                var field = Il2CppInterop.Runtime.IL2CPP.il2cpp_class_get_field_from_name(element, name);
+                // A value type's field offsets count the object header it has when boxed.
+                return field == IntPtr.Zero ? -1 : (int)Il2CppInterop.Runtime.IL2CPP.il2cpp_field_get_offset(field) - 0x10;
+            }
+            _crewId = Offset("id");
+            _crewBelt = Offset("belt");
+            _crewDistance = Offset("distance");
+            if (stride < 12 || _crewId < 0 || _crewBelt < 0 || _crewDistance < 0 ||
+                _crewId + 4 > stride || _crewBelt + 4 > stride || _crewDistance + 4 > stride)
+            {
+                Log.Warning($"The crew's capsule list isn't laid out as expected (size {stride}, id {_crewId}, belt {_crewBelt}, distance {_crewDistance}): capsules the host sends aren't posed.");
+                return false;
+            }
+            _crewStride = stride;
+            return true;
+        }
+        catch (Exception e)
+        {
+            Log.Warning("Reading the crew's capsule list failed: " + e.Message);
+            return false;
+        }
+    }
+
+    /// <summary>The host's belt update arrived (crewmates): capsules it moved are posed for this frame too.</summary>
+    internal static void AfterCrewBelts(MoonWorld world)
+    {
+        // The update may have given belts near the player new queues: those are looked up again.
+        if (Camera.main is { } camera)
+        {
+            var near = camera.transform.position;
+            const float reach = CrewQueueReach * CrewQueueReach;
+            bool Near(int belt) => belt < 0 || !BeltNetwork.TryEnds(belt, out var start, out var end) ||
+                                   VMath.SqrDistance(start, near) < reach || VMath.SqrDistance(end, near) < reach;
+            foreach (var belt in Queues.Keys.ToList())
+                if (Near(belt)) Queues.Remove(belt);
+            Missing.RemoveWhere(Near);
+        }
+        MapRiders(world);
+    }
+
+    private const float CrewQueueReach = 250f;   // beyond what the host sends a crewmate
 
     private static void MapQueue(IntPtr list, int belt, BeltType type)
     {
@@ -582,12 +679,22 @@ internal static class BeltState
             _nextBroadcast = now + 10f;
             CrewMessages.SendToCrew(TableTopic, EncodeTable());
         }
+        // The network's shape changed (also belts a crewmate built, which arrive without the build hooks): listeners
+        // such as tube pressure work it out again. Before, a belt noticed here (by the count) before the network
+        // looked again was worked out with the old network, and nothing asked again: tubes after a crewmate's booster
+        // stayed unpressurised on the host.
+        if (_networkVersion != BeltNetwork.Version) { _networkVersion = BeltNetwork.Version; _changed = true; }
         if (_changed)
         {
             _changed = false;
+            // Listeners ask about the network straight away: it looks for changes first.
+            BeltNetwork.CheckSoon();
             Belts.RaiseChanged();
+            _networkVersion = BeltNetwork.Version;
         }
     }
+
+    private static int _networkVersion = -1;
 
     private static void ApplySpeeds(MoonWorld world)
     {
