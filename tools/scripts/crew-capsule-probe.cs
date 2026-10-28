@@ -14,6 +14,23 @@ public static class CrewCapsuleProbe
 
     static Vector3 _original;
 
+    // Each capsule's last drawing: frame, where the game wanted it, where it ended up, whether the mod posed it, and
+    // the belt and distance the mod had it on.
+    static readonly Dictionary<int, (int Frame, Vector3 Original, Vector3 Final, bool Posed, string Rider)> Last = new();
+    public static readonly List<string> Jumps = new();
+    public static int GameJumps, PoseJumps, Twice;
+
+    static string RiderOf(int id)
+    {
+        if (!Riders.Contains(id)) return "not mapped";
+        var r = Riders[id];
+        var t = r.GetType();
+        var belt = (int)t.GetField("Item1").GetValue(r);
+        var distance = (float)t.GetField("Item2").GetValue(r);
+        var length = Belts.PathOf(belt)?.Length ?? -1f;
+        return $"{belt} ({Belts.TypeOf(belt)?.Name ?? (belt < 0 ? "route" : "plain")}, {length:0.00} m) at {distance:0.00}";
+    }
+
     // Before the mod's pose (first) and after it (last): moved means posed.
     public static void First(Vector3 point) => _original = point;
 
@@ -21,7 +38,28 @@ public static class CrewCapsuleProbe
     {
         if (c == null) return;
         Shown++;
-        if (Riders.Contains(c.id) || (point - _original).sqrMagnitude > 1e-6f) { ShownPosed++; return; }
+        var frame = Time.frameCount;
+        var posed = Riders.Contains(c.id) || (point - _original).sqrMagnitude > 1e-6f;
+        var rider = RiderOf(c.id);
+        if (Last.TryGetValue(c.id, out var last))
+        {
+            if (last.Frame == frame) Twice++;
+            else if (last.Frame >= frame - 3 && (point - last.Final).magnitude > 0.2f)
+            {
+                var up = point.normalized;
+                var game = (_original - last.Original).magnitude > 0.2f;
+                if (game) GameJumps++;
+                else
+                {
+                    PoseJumps++;
+                    if (Jumps.Count < 40)
+                        Jumps.Add($"f{frame} capsule {c.id}: drawn moved {(point - last.Final).magnitude:0.00} m (up {Vector3.Dot(point - last.Final, up):+0.00;-0.00}), " +
+                                  $"game's point {(_original - last.Original).magnitude:0.00} m; posed {last.Posed} -> {posed}; mapped {last.Rider} -> {rider}");
+                }
+            }
+        }
+        Last[c.id] = (frame, _original, point, posed, rider);
+        if (posed) { ShownPosed++; return; }
         Unposed[c.id] = Unposed.GetValueOrDefault(c.id) + 1;
         UnposedAt[c.id] = point;
     }
@@ -36,6 +74,7 @@ public static class CrewCapsuleProbe
         Riders = (System.Collections.IDictionary)state.GetField("Riders", any).GetValue(null);
         var read = state.GetMethod("ReadQueue", any);
         Unposed.Clear(); UnposedAt.Clear(); Shown = ShownPosed = 0;
+        Last.Clear(); Jumps.Clear(); GameJumps = PoseJumps = Twice = 0;
         ctx.Log($"in crew {CrewMessages.InCrew}, host {CrewMessages.IsHost}; crew riders {w.crewRiders.Count}, missing {w.crewRiderMissing.Count}, seen {w.crewRidersSeen.Count}");
         var show = AccessTools.Method(typeof(MoonDustCanisterView), nameof(MoonDustCanisterView.Show));
         ctx.Harmony.Patch(show, prefix: new HarmonyMethod(typeof(CrewCapsuleProbe), nameof(First)) { priority = Priority.First + 1 });
@@ -75,6 +114,8 @@ public static class CrewCapsuleProbe
             }
         }
         ctx.Log($"{frames} frames: {Shown} capsules drawn, {ShownPosed} posed; {Unposed.Count} different capsules drawn unposed");
+        ctx.Log($"jumps between frames (over 0.25 m): {GameJumps} the game moved the capsule, {PoseJumps} only our pose changed; drawn twice in a frame {Twice}");
+        foreach (var s in Jumps) ctx.Log("  " + s);
         // The ones the game has on a tube (or the host does) matter: listed first.
         bool Tube(int id) => where.TryGetValue(id, out var l) && l.Any(s => s.Contains("tube") || s.Contains("booster") || s.Contains("route"));
         ctx.Log($"  of those, on a tube by the game's queue or the host's list: {Unposed.Keys.Count(Tube)}");

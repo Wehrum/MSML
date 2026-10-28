@@ -10,7 +10,7 @@ public static class CapsuleJam
         var riders = Items<MoonWorld.Rider>(w.riders.Values);
         var perBelt = riders.GroupBy(r => r.belt).ToDictionary(g => g.Key, g => g.Count());
         var stoppedPerBelt = riders.Where(r => !r.moving).GroupBy(r => r.belt).ToDictionary(g => g.Key, g => g.Count());
-        ctx.Log($"capsules {w.canisters.Count}/{w.settings.maxDroppedCanisters}, on belts {riders.Count} ({riders.Count(r => !r.moving)} stopped), belts {w.conveyors.Count}, machines {w.production.Count}");
+        ctx.Log($"capsules {w.canisters.Count}/{MoonWorld.MaxSavedCapsules}, on belts {riders.Count} ({riders.Count(r => !r.moving)} stopped), belts {w.conveyors.Count}, machines {w.production.Count}");
 
         // Follow each loaded belt to its terminal belt.
         var terminals = new Dictionary<int, (int capsules, int stopped)>();

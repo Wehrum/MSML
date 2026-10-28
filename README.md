@@ -29,6 +29,8 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
 **Updates:** the MODS screen checks for updates when you open it (or with **CHECK FOR UPDATES**). Mods with a newer version get an **UPDATE** button (or **UPDATE ALL MODS**); the new version loads after a restart. When MSML itself has a new release, **UPDATE MSML** downloads it, closes the game, installs it in a PowerShell window and starts the game again. The install command above still works too.
 
+**After a Moon Sweepers update:** if the game crashes on start after Steam updated it, run the install command above again. It rebuilds MSML's link to the game for the new version (under a minute) and installs the latest MSML; then update your mods from the MODS screen.
+
 ### If Windows Security flags MSML or a mod
 
 Windows Security (Defender) sometimes flags a mod's `.zip` or `.dll` as a virus when it's downloaded in a browser. It's a false alarm: the mods are new and their files aren't signed, so Windows hasn't seen them before and its cloud check plays it safe. To avoid or fix it:
@@ -40,9 +42,9 @@ Windows Security (Defender) sometimes flags a mod's `.zip` or `.dll` as a virus 
 
 | Mod | Description | |
 |---|---|---|
-| **MoonSweeper+** | Quality-of-life fixes, each with its own setting. So far: the vehicle camera stays where you point it instead of snapping back behind the vehicle (auto recenter can be turned back on, with your own delay), and the moon's capsule limit (10,000, counting capsules on belts) can be raised up to 100,000 (in a crew, the host's limit is used). | [`mods/`](mods) |
+| **MoonSweeper+** | Quality-of-life fixes, each with its own setting. So far: the vehicle camera stays where you point it instead of snapping back behind the vehicle (auto recenter can be turned back on, with your own delay). | [`mods/`](mods) |
 | **Hex Harvester** | A new vehicle, sold in the garage for $100,000: a six-wheeled harvester with a 25 m sweeper head that clears a whole hex in one pass, and a glass silo (9,000 kg) that visibly fills with dust. Its price and upgrade prices are adjustable in SETTINGS. It's delivered in front of the garage, since it doesn't fit in the hall. | [`mods/`](mods) |
-| **MoonFixerUpper** | Fixes for bugs in the game itself. So far: "Could not pack a capsule", where reaching the moon's 10,000-capsule limit (capsules on belts count) freezes every stone press and pressure chamber and backs up all belts for good. Works on existing saves; only the host needs it. | [`mods/`](mods) |
+| **MoonFixerUpper** | Fixes for bugs in the game itself, each with its own setting. Its first fix ("Could not pack a capsule" at the 10,000-capsule limit) was made unnecessary by Moon Sweepers 1.0.5, which removed that limit. | [`mods/`](mods) |
 | **Better Belts** | Pneumatic tubes: glass tubes sunk into the ground, built like belts (up to 90 m), that shoot capsules along up to 5x as fast (10x in SETTINGS). A Tube booster running on solar power like a machine pressurises the tubes after it (through splitters and mergers) for about 80 m, then the pressure fades; rings on the tubes show it (green full, yellow fading, red belt speed). Tubes connect to belts, splitters, mergers and machines; the Tube splitter and Tube merger are sunk into the ground too, so tube lines join them flush. Tubes follow the ground over bumps and down hills, can be walked and driven over, never stop (no air only means belt speed), and become plain belts if the mod is removed. Speed, ranges, prices, power and a colour-blind palette are in SETTINGS. | [`mods/`](mods) |
 
 Mod settings can be changed in the MODS screen (select the mod, then **SETTINGS**) and, for mods that support it, in the pause menu under **MOD SETTINGS**.

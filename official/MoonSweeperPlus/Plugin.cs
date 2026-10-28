@@ -14,7 +14,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.moonsweeperplus";
     public const string Name = "MoonSweeper+";
-    public const string Version = "0.2.0";
+    public const string Version = "0.3.0";
 
     internal static ManualLogSource Logger = null!;
 
@@ -25,7 +25,6 @@ public class Plugin : BasePlugin
 
         VehicleCamera.Bind(Config);
         harmony.PatchAll(typeof(VehicleCamera));
-        CapsuleLimit.Bind(Config);
 
         ModSettings.ShowInGame(this);
         Log.LogInfo($"{Name} {Version} loaded.");

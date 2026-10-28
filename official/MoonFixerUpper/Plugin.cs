@@ -14,7 +14,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.moonfixerupper";
     public const string Name = "MoonFixerUpper";
-    public const string Version = "0.1.0";
+    public const string Version = "0.1.1";
 
     internal static ManualLogSource Logger = null!;
 
@@ -22,9 +22,6 @@ public class Plugin : BasePlugin
     {
         Logger = Log;
         var harmony = new Harmony(Guid);
-
-        CapsuleLimitDeadlock.Bind(Config);
-        harmony.PatchAll(typeof(CapsuleLimitDeadlock));
 
         ModSettings.ShowInGame(this);
         Log.LogInfo($"{Name} {Version} loaded.");
