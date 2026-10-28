@@ -51,26 +51,26 @@
                  {
                      "id":  "msml.moonfixerupper",
                      "name":  "MoonFixerUpper",
-                     "version":  "0.1.0",
+                     "version":  "0.1.1",
                      "folder":  "MoonFixerUpper",
-                     "file":  "MoonFixerUpper-0.1.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonFixerUpper-0.1.0.zip",
-                     "sha256":  "CC79E16387D4A75713934DC5768930D527EA9E5CFBAC64E0503E309B7ABEC3B1",
-                     "bytes":  4174,
+                     "file":  "MoonFixerUpper-0.1.1.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonFixerUpper-0.1.1.zip",
+                     "sha256":  "C771A148F8DFD506DDE3D73A878E11E67D0F661D3CEB2F99CB6E4677D77CBF37",
+                     "bytes":  2849,
                      "author":  "MSML",
-                     "description":  "Fixes for bugs in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\n\"Could not pack a capsule\": a moon can hold at most 10,000 capsules, counting every capsule on a belt. Big belt networks reach that, and then every stone press and pressure chamber stops, all belts back up, and the factory stays frozen for good. With the fix, processors can still pack their product at the limit (they only turn capsules they\u0027ve taken in into new ones), so the belts start moving again. Works on existing saves; only the host needs it in multiplayer."
+                     "description":  "Fixes for bugs in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nMoon Sweepers 1.0.5 fixed \"Could not pack a capsule\" itself (the 10,000-capsule limit is gone), so this mod\u0027s fix for it was removed. More fixes are coming."
                  },
                  {
                      "id":  "msml.moonsweeperplus",
                      "name":  "MoonSweeper+",
-                     "version":  "0.2.0",
+                     "version":  "0.3.0",
                      "folder":  "MoonSweeperPlus",
-                     "file":  "MoonSweeperPlus-0.2.0.zip",
-                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.2.0.zip",
-                     "sha256":  "08F76CDAEFF0FC4C2E44ECFA24F207346B3CEE45D518EA526DD565DE6643B051",
-                     "bytes":  5786,
+                     "file":  "MoonSweeperPlus-0.3.0.zip",
+                     "url":  "https://raw.githubusercontent.com/Wehrum/MSML/main/mods/MoonSweeperPlus-0.3.0.zip",
+                     "sha256":  "6D05BBBC747C9A6EA7F8C19DC72B599090DB6FD29491E00E2E801B931318CDA5",
+                     "bytes":  4045,
                      "author":  "MSML",
-                     "description":  "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay.\n\nCapsule limit: a moon normally holds at most 10,000 capsules (counting every capsule on belts); at the limit nothing can pack capsules. Raise it up to 100,000 in SETTINGS. More capsules cost frame rate, so raise it gradually. In a crew the host\u0027s limit is used."
+                     "description":  "The official MSML quality-of-life mod: small fixes for everyday annoyances. Every fix can be turned on or off with SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nVehicle camera: the camera stays where you point it while driving instead of snapping back behind the vehicle. Turn on auto recenter to bring the snap-back back, with your own delay."
                  }
              ]
 }
