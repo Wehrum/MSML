@@ -29,7 +29,7 @@ Or you can extract it into `<game>\Mods\`. Restart the game to load it.
 
 **Updates:** the MODS screen checks for updates when you open it (or with **CHECK FOR UPDATES**). Mods with a newer version get an **UPDATE** button (or **UPDATE ALL MODS**); the new version loads after a restart. When MSML itself has a new release, **UPDATE MSML** downloads it, closes the game, installs it in a PowerShell window and starts the game again. The install command above still works too.
 
-**After a Moon Sweepers update:** if the game crashes on start after Steam updated it, run the install command above again. It rebuilds MSML's link to the game for the new version (under a minute) and installs the latest MSML; then update your mods from the MODS screen.
+**After a Moon Sweepers update:** when Steam updates the game, MSML notices before loading anything and asks whether to set itself up again for the new version (it downloads the latest MSML and rebuilds its link to the game in a PowerShell window, about a minute, then starts the game again), or to play without mods that time. Then check MODS for mod updates. MSML versions before 0.16 can't do this and the game crashes on start instead: run the install command above again.
 
 ### If Windows Security flags MSML or a mod
 

@@ -88,11 +88,13 @@ Copy-Item -Recurse (Join-Path $RepoRoot "installer\*") $stage -Exclude "get.ps1"
 Copy-Item -Recurse $toolsPayload $payload
 
 Step "Building the mod loader"
+Build-Project (Join-Path $RepoRoot "src\Boot\MSML.Boot.csproj") $deploy
 Build-Project (Join-Path $RepoRoot "src\ModLoader.Patcher\ModLoader.Patcher.csproj") $deploy
 Build-Project (Join-Path $RepoRoot "src\Api\MSML.Api.csproj") $deploy
 Build-Project (Join-Path $RepoRoot "src\ModLoader\ModLoader.csproj") $deploy
 Copy-Item -Recurse (Join-Path $deploy "BepInEx\plugins") (Join-Path $payload "plugins")
 Copy-Item -Recurse (Join-Path $deploy "BepInEx\patchers") (Join-Path $payload "patchers")
+Copy-Item (Join-Path $deploy "BepInEx\core\MSML.Boot.dll") (Join-Path $payload "core")
 $loaderVersion = (Get-Item (Join-Path $payload "plugins\MoonSweepMods.ModLoader\MoonSweepMods.ModLoader.dll")).VersionInfo.ProductVersion -replace '\+.*$', ''
 
 $pack = Get-Content (Join-Path $payload "pack.json") -Raw | ConvertFrom-Json

@@ -24,6 +24,7 @@
            Mod            <game>\Mods\<ModFolderName>\   (default; loaded by the mod loader when enabled in-game)
            LoaderPlugin   <game>\BepInEx\plugins\<AssemblyName>\
            LoaderPatcher  <game>\BepInEx\patchers\<AssemblyName>\
+           Boot           <game>\BepInEx\core\   (MSML.Boot: what Doorstop starts, before BepInEx)
            DevPlugin      <game>\BepInEx\plugins\<AssemblyName>\   (development only; never shipped) -->
     <ModKind Condition="'$(ModKind)' == ''">Mod</ModKind>
   </PropertyGroup>
@@ -58,6 +59,7 @@
       <_DeployDir Condition="'$(ModKind)' == 'Mod'">$(GameDeployRoot)\Mods\$(ModFolderName)</_DeployDir>
       <_DeployDir Condition="'$(ModKind)' == 'LoaderPlugin' Or '$(ModKind)' == 'DevPlugin'">$(GameDeployRoot)\BepInEx\plugins\$(AssemblyName)</_DeployDir>
       <_DeployDir Condition="'$(ModKind)' == 'LoaderPatcher'">$(GameDeployRoot)\BepInEx\patchers\$(AssemblyName)</_DeployDir>
+      <_DeployDir Condition="'$(ModKind)' == 'Boot'">$(GameDeployRoot)\BepInEx\core</_DeployDir>
     </PropertyGroup>
     <Error Condition="'$(_DeployDir)' == ''" Text="Unknown ModKind '$(ModKind)'." />
     <ItemGroup>

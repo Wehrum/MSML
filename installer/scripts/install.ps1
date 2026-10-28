@@ -7,7 +7,7 @@
 
         payload\pack.json                      pack metadata (written by tools\build-tools.ps1 / build-installer.ps1)
         payload\BepInEx.zip                    BepInEx Bleeding Edge (IL2CPP x64)
-        payload\core\*.dll                     patched Il2CppInterop runtime, copied over BepInEx\core
+        payload\core\*.dll                     patched Il2CppInterop runtime, and MSML.Boot (what Doorstop starts), copied over BepInEx\core
         payload\tools\Cpp2IL.exe               self-contained tools that generate the interop assemblies locally
         payload\tools\Il2CppInterop.CLI.exe
         payload\plugins\<Name>\*.dll           optional: mod loader plugin  -> BepInEx\plugins
@@ -100,6 +100,15 @@ function Set-BepInExConfig([string]$BepInEx) {
     [IO.File]::WriteAllText($cfg, $text)
 }
 
+# Doorstop starts MSML.Boot (when the payload has it) instead of BepInEx: it checks the game wasn't updated since the
+# interop assemblies were generated (they'd crash it) and offers to set MSML up again, then starts BepInEx.
+function Set-DoorstopTarget([string]$GameDir) {
+    $ini = Join-Path $GameDir "doorstop_config.ini"
+    if (-not (Test-Path $ini) -or -not (Test-Path (Join-Path $GameDir "BepInEx\core\MSML.Boot.dll"))) { return }
+    $text = Set-CfgValue (Get-Content $ini -Raw) "General" "target_assembly" "BepInEx\core\MSML.Boot.dll"
+    [IO.File]::WriteAllText($ini, $text)
+}
+
 function Install-UnityLibs([string]$GameDir, [string]$UnityLibs) {
     if (Test-Path (Join-Path $UnityLibs "UnityEngine.CoreModule.dll")) { return }
     $ggm = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes((Join-Path $GameDir "MoonSweepers_Data\globalgamemanagers")), 0, 256)
@@ -151,6 +160,7 @@ try {
     Step "Installing patched Il2CppInterop runtime"
     Copy-Item -Force (Join-Path $PayloadDir "core\*") (Join-Path $BepInEx "core")
     Set-BepInExConfig $BepInEx
+    Set-DoorstopTarget $GameDir
 
     # 2. Interop assemblies -----------------------------------------------------------------------
     $unityLibs = Join-Path $BepInEx "unity-libs"

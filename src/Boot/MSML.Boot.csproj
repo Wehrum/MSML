@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Doorstop's entry point: checks the game wasn't updated since MSML was installed (its interop assemblies would
+       no longer match and the game would crash), then starts BepInEx. Plain .NET: nothing of the game or BepInEx. -->
+  <PropertyGroup>
+    <IsModProject>true</IsModProject>
+    <ModKind>Boot</ModKind>
+    <AssemblyName>MSML.Boot</AssemblyName>
+    <RootNamespace>Doorstop</RootNamespace>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>
