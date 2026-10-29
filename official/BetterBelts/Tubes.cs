@@ -52,8 +52,9 @@ internal static class Tubes
     /// <summary>Each tube's (or booster's) glowing rings and how far along the belt they sit.</summary>
     public static readonly Dictionary<int, List<(Renderer Ring, float At)>> Rings = new();
 
-    /// <summary>Each tube's rings in one renderer: their colours (a pixel each) and how far along the tube they sit.</summary>
-    public static readonly Dictionary<int, (Renderer Renderer, Texture2D Colors, float[] At)> RingStrips = new();
+    /// <summary>Each tube's rings in one mesh: how far along the tube each ring sits, and its vertex count (each ring's u
+    /// picks its colour from the shared ring material, see <see cref="Pressure.RingMaterial"/>).</summary>
+    public static readonly Dictionary<int, (Mesh Mesh, float[] At, int PerRing)> RingStrips = new();
 
     /// <summary>Each tube splitter's and merger's pressure ring.</summary>
     public static readonly Dictionary<int, List<Renderer>> JunctionRings = new();
@@ -560,7 +561,8 @@ internal static class Tubes
         return go.transform;
     }
 
-    // All of a tube's rings in one mesh, each coloured by a pixel of a small texture (RingStrips): a renderer and mesh
+    // All of a tube's rings in one mesh, each ring's u coordinate picking its colour from the shared ring material
+    // (RingStrips): a renderer and mesh
     // per ring made a long tube's look slow to build (and thousands of renderers).
     private static void AddRings(int belt, MoonConveyorPath path, Transform parent, float length, float radius)
     {
@@ -603,20 +605,14 @@ internal static class Tubes
             }
         }
         var mesh = BeltLooks.WorldMesh(parent, vertices, normals, triangles, "Rings", uvs);
-        var renderer = BeltLooks.Show(parent, "Rings", mesh, BeltLooks.Glow(Color.white), shadows: false);
-        var colors = new Texture2D(count, 1, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "MSML ring colours" };
+        BeltLooks.Show(parent, "Rings", mesh, Pressure.RingMaterial(), shadows: false);
         DropRingStrip(belt);
-        RingStrips[belt] = (renderer, colors, at);
+        RingStrips[belt] = (mesh, at, 2 * (sides + 1));
         Rings.Remove(belt);
         Pressure.Recolor(belt);
     }
 
-    internal static void DropRingStrip(int belt)
-    {
-        if (!RingStrips.TryGetValue(belt, out var strip)) return;
-        RingStrips.Remove(belt);
-        if (strip.Colors != null && !strip.Colors.WasCollected) UnityEngine.Object.Destroy(strip.Colors);
-    }
+    internal static void DropRingStrip(int belt) => RingStrips.Remove(belt);
 
     // ---- placement holograms -------------------------------------------------------------------
 
@@ -735,7 +731,7 @@ internal static class Tubes
             {
                 var at = baseKind == JunctionType.Splitter ? 0.62f : length - 0.62f;
                 var ring = BeltLooks.Tube(path, t, TubeRadius + 0.02f, 0f, at - RingWidth / 2f, at + RingWidth / 2f, sides: 22, step: RingWidth, liftAt: Centre);
-                if (ring != null) rings.Add(BeltLooks.Show(t, "Ring", ring, BeltLooks.Glow(Color.white), shadows: false));
+                if (ring != null) rings.Add(BeltLooks.Show(t, "Ring", ring, Pressure.RingMaterial(), shadows: false));
             }
             // Dug in on the outside of each route (the side away from the other one).
             BeltLooks.Frame(path, length / 2f, out _, out _, out var right, out _);
@@ -836,7 +832,7 @@ internal static class Tubes
         // A glowing ring around the middle shows its own state (green: running, red: no power).
         var status = BeltLooks.Tube(path, t, BoosterRadius + 0.02f, 0f, length / 2f - 0.08f, length / 2f + 0.08f, sides: 26, liftAt: d => CentreAt(d) - HousingDrop);
         var rings = new List<(Renderer, float)>();
-        if (status != null) rings.Add((BeltLooks.Show(t, "Status", status, BeltLooks.Glow(Color.white), shadows: false), -1f));
+        if (status != null) rings.Add((BeltLooks.Show(t, "Status", status, Pressure.RingMaterial(), shadows: false), -1f));
         Rings[belt] = rings;
         Pressure.Recolor(belt);
     }

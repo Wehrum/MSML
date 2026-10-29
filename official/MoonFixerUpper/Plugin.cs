@@ -14,7 +14,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.moonfixerupper";
     public const string Name = "MoonFixerUpper";
-    public const string Version = "0.1.1";
+    public const string Version = "0.2.0";
 
     internal static ManualLogSource Logger = null!;
 
@@ -22,6 +22,9 @@ public class Plugin : BasePlugin
     {
         Logger = Log;
         var harmony = new Harmony(Guid);
+
+        CrewDustKeepsUp.Bind(Config);
+        harmony.PatchAll(typeof(CrewDustKeepsUp));
 
         ModSettings.ShowInGame(this);
         Log.LogInfo($"{Name} {Version} loaded.");

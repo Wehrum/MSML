@@ -1,7 +1,7 @@
 {
   "id": "msml.moonfixerupper",
   "name": "MoonFixerUpper",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "author": "MSML",
-  "description": "Fixes for bugs in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nMoon Sweepers 1.0.5 fixed \"Could not pack a capsule\" itself (the 10,000-capsule limit is gone), so this mod's fix for it was removed. More fixes are coming."
+  "description": "Fixes for problems in the game itself. Each fix can be turned off in SETTINGS (here, or MOD SETTINGS in the pause menu).\n\nCrew dust keeps up (crewmates): when several players are cleaning, the dust behind your own vehicle no longer lags seconds behind. Your game cleans everyone's strokes in one queue, and with wide heads it overflows, so your strokes waited behind everyone else's or were dropped. While it's backed up, other players' strokes far from you (60 m, adjustable) are left to the host's dust sync, and yours are cleaned straight away. The host is never affected.\n\nMoon Sweepers 1.0.5 fixed \"Could not pack a capsule\" itself, so the earlier fix for it was removed."
 }

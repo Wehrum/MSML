@@ -14,7 +14,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "msml.betterbelts";
     public const string Name = "Better Belts";
-    public const string Version = "0.3.0";
+    public const string Version = "0.3.2";
 
     internal static ManualLogSource Logger = null!;
 

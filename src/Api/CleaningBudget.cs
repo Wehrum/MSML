@@ -6,24 +6,26 @@ using UnityEngine;
 namespace MSML;
 
 /// <summary>
-/// Keeps up with wide cleaning heads. The host cleans for everyone within a fixed time each frame
-/// (<c>MoonSettings.cleaningWorkBudgetMs</c> for the cleaning, <c>dustVisualBudgetMs</c> for redrawing the dust),
-/// sized for the stock vehicles. A much wider head (like the Hex Harvester's 25 m) makes far more work per metre, so
-/// on a busy moon the dust falls seconds behind the vehicle. While strokes wider than a stock head are being cleaned,
-/// both limits are raised in proportion to the width (they're limits: the extra time is only used while there's a
-/// backlog), and put back a few seconds after.
+/// Keeps the dust up with the cleaning. The game cleans within a fixed time each frame
+/// (<c>MoonSettings.cleaningWorkBudgetMs</c>, 2 ms) and redraws the dust within another (<c>dustVisualBudgetMs</c>,
+/// 2 ms), sized for a few stock vehicles. Wide heads (the Hex Harvester's 25 m) and several players cleaning at once
+/// (a crewmate's game cleans everyone's strokes too) queue far more strokes than that: measured in a crew, thousands
+/// waited, and the dust cleared seconds behind the vehicles. The time allowed now follows the queues: the game's own
+/// when they're short, up to <see cref="MaxBudgetMs"/> as strokes (or dust redraws) pile up, easing back as they clear.
 /// </summary>
 internal static class CleaningBudget
 {
-    private const float StockWidth = 4f;          // the widest stock head is about 3.7 m
-    private const float MaxScale = 6f;
     private const float MaxBudgetMs = 12f;
-    private const float Linger = 3f;
+    private const int QuietStrokes = 16;      // the game's own budget keeps up with this many waiting
+    private const int FullStrokes = 96;       // this many waiting (two frames' worth): the most time. At 400, a 25 m
+                                              // head's own strokes waited ~0.5 s (up to 1.4 s) before being cleaned
+    private const int QuietBanks = 2;
+    private const int FullBanks = 16;
+    private const float EaseBackPerSecond = 4f;   // ms the budget drops per second once the queue has cleared
 
     private static bool _applied;
     private static MoonSettings? _settings;
-    private static float _baseWork = -1f, _baseVisual = -1f;
-    private static float _scale = 1f, _until;
+    private static float _baseWork = -1f, _baseVisual = -1f, _work, _visual;
 
     internal static void Apply()
     {
@@ -33,39 +35,33 @@ internal static class CleaningBudget
         Moon.Update += Tick;
     }
 
-    private static void Wide(float width)
+    // The budget for a queue this long: the game's own up to quiet, the most from full.
+    private static float Wanted(float baseMs, int waiting, int quiet, int full)
     {
-        if (width <= StockWidth) return;
-        var scale = Mathf.Min(MaxScale, width / StockWidth);
-        _scale = Time.unscaledTime > _until ? scale : Mathf.Max(_scale, scale);
-        _until = Time.unscaledTime + Linger;
+        if (waiting <= quiet) return baseMs;
+        var t = Mathf.Clamp01((waiting - quiet) / (float)(full - quiet));
+        return Mathf.Lerp(baseMs, Mathf.Max(baseMs, MaxBudgetMs), t);
     }
 
-    // Every vehicle (and crewmate's, on the host) stroke goes through these.
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.QueueToolStroke))]
-    [HarmonyPrefix]
-    private static void BeforeQueue(float width) => Wide(width);
-
-    [HarmonyPatch(typeof(MoonWorld), nameof(MoonWorld.Enqueue))]
-    [HarmonyPrefix]
-    private static void BeforeEnqueue(float width) => Wide(width);
+    // Rises straight away, eases back slowly (a queue that just emptied usually fills again).
+    private static float Follow(float current, float wanted) =>
+        wanted >= current ? wanted : Mathf.Max(wanted, current - EaseBackPerSecond * Time.unscaledDeltaTime);
 
     private static void Tick()
     {
-        var settings = Moon.World?.settings;
-        if (settings == null) return;
+        var world = Moon.World;
+        var settings = world?.settings;
+        if (world == null || settings == null) return;
         if (_settings == null || _settings.WasCollected || _settings.Pointer != settings.Pointer)
         {
             _settings = settings;
-            _baseWork = settings.cleaningWorkBudgetMs;
-            _baseVisual = settings.dustVisualBudgetMs;
+            _baseWork = _work = settings.cleaningWorkBudgetMs;
+            _baseVisual = _visual = settings.dustVisualBudgetMs;
         }
-        var scale = Time.unscaledTime <= _until ? _scale : 1f;
-        if (scale <= 1f) _scale = 1f;
-        var work = Mathf.Min(MaxBudgetMs, _baseWork * scale);
-        var visual = Mathf.Min(MaxBudgetMs, _baseVisual * scale);
-        if (Math.Abs(settings.cleaningWorkBudgetMs - work) > 0.01f) settings.cleaningWorkBudgetMs = work;
-        if (Math.Abs(settings.dustVisualBudgetMs - visual) > 0.01f) settings.dustVisualBudgetMs = visual;
+        _work = Follow(_work, Wanted(_baseWork, world.PendingToolStrokes, QuietStrokes, FullStrokes));
+        _visual = Follow(_visual, Wanted(_baseVisual, world.PendingDustBanks, QuietBanks, FullBanks));
+        if (Math.Abs(settings.cleaningWorkBudgetMs - _work) > 0.01f) settings.cleaningWorkBudgetMs = _work;
+        if (Math.Abs(settings.dustVisualBudgetMs - _visual) > 0.01f) settings.dustVisualBudgetMs = _visual;
     }
 
     // Leaving a moon: the settings asset outlives it, so put its own values back.
@@ -79,7 +75,5 @@ internal static class CleaningBudget
             _settings.dustVisualBudgetMs = _baseVisual;
         }
         _settings = null;
-        _scale = 1f;
-        _until = 0f;
     }
 }

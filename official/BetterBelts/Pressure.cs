@@ -413,13 +413,86 @@ internal static class Pressure
 
     private static float Intensity => _bright ? 1.4f : 0.5f;
 
+    // Every ring (tubes', boosters', junctions') shares one material coloured by a palette of the pressure colours, each
+    // ring's u coordinate picking its colour: so they're all drawn together. A material (property block) and texture
+    // per tube made the GPU set up and draw each tube's rings on their own: over 3 ms a frame with ~600 tubes in view.
+    private const int PaletteSize = 64;
+    private static Texture2D? _palette;
+    private static Material? _ringMaterial;
+    private static int _paletteKey = int.MinValue;
+
+    /// <summary>The material every ring is drawn with (recolour rings with <see cref="RingU"/>).</summary>
+    public static Material RingMaterial()
+    {
+        EnsurePalette();
+        return _ringMaterial!;
+    }
+
+    private static void EnsurePalette()
+    {
+        if (_palette == null || _palette.WasCollected || _ringMaterial == null || _ringMaterial.WasCollected)
+        {
+            _palette = new Texture2D(PaletteSize, 1, TextureFormat.RGBA32, false)
+                { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "MSML pressure colours", hideFlags = HideFlags.DontUnloadUnusedAsset };
+            _ringMaterial = PaletteGlow(_palette, Intensity);
+            _paletteKey = int.MinValue;
+        }
+        var key = HashCode.Combine(Settings.ColorBlind.Value, _bright);
+        if (key == _paletteKey) return;
+        _paletteKey = key;
+        var colors = new Color[PaletteSize];
+        for (var i = 0; i < PaletteSize; i++) colors[i] = ColorFor(i / (PaletteSize - 1f));
+        _palette.SetPixels(new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color>(colors));
+        _palette.Apply(false);
+        _ringMaterial.SetColor("_EmissionColor", Color.white * Intensity);
+    }
+
+    /// <summary>The u coordinate that shows a pressure's colour with <see cref="RingMaterial"/>.</summary>
+    public static float RingU(float pressure) =>
+        PaletteU(pressure >= 0.999f ? PaletteSize - 1 : pressure <= 0.001f ? 0 : Mathf.Clamp(Mathf.RoundToInt(pressure * (PaletteSize - 1)), 1, PaletteSize - 2));
+
+    // (Kept here rather than using the MSML API's copies, so this works with older MSML releases too.)
+    private static float PaletteU(int pixel) => (pixel + 0.5f) / PaletteSize;
+
+    private static Material PaletteGlow(Texture2D palette, float intensity)
+    {
+        var m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "MSML pressure rings" };
+        m.SetColor("_BaseColor", Color.white);
+        m.SetTexture("_BaseMap", palette);
+        m.EnableKeyword("_EMISSION");
+        m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        m.SetTexture("_EmissionMap", palette);
+        m.SetColor("_EmissionColor", Color.white * intensity);
+        m.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return m;
+    }
+
+    // Sets a mesh's u coordinates: vertices in runs of 'run', run i getting u[i] (one run: all the same).
+    internal static void SetU(Mesh mesh, IReadOnlyList<float> u, int run)
+    {
+        var uv = new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Vector2>(mesh.vertexCount);
+        var span = uv.AsSpan();
+        for (var i = 0; i < span.Length; i++) span[i] = new Vector2(u[Math.Min(u.Count - 1, i / run)], 0.5f);
+        mesh.uv = uv;
+    }
+
+    // A ring renderer's mesh, recoloured as a whole.
+    private static void SetRing(Renderer ring, float pressure)
+    {
+        if (ring == null || ring.WasCollected) return;
+        var mesh = ring.GetComponent<MeshFilter>()?.sharedMesh;
+        if (mesh != null) SetU(mesh, new[] { RingU(pressure) }, int.MaxValue);
+    }
+
     // What each piece's rings (and air) and each junction's ring last showed: only those whose pressure (or the
     // colours: ranges, colour-blind, brightness) changed are recoloured. Recolouring every ring in the world on each
     // change was thousands of calls into the game.
     private static readonly Dictionary<int, int> Shown = new();
     private static readonly Dictionary<int, int> ShownJunction = new();
 
-    private static int Palette => HashCode.Combine(Full, Fade, Settings.ColorBlind.Value, _bright);
+    // What the rings' pressures depend on besides each piece's own state (the colours and brightness are the shared
+    // material's: changing them recolours nothing).
+    private static int Palette => HashCode.Combine(Full, Fade);
 
     private static int ShowKey(int belt) => HashCode.Combine(Palette,
         StartDistance.TryGetValue(belt, out var d) ? (int)(d * 4f) : int.MinValue,
@@ -430,42 +503,43 @@ internal static class Pressure
 
     public static void Recolor(int belt)
     {
+        EnsurePalette();
         Shown[belt] = ShowKey(belt);
         var boosterPower = BoosterPower.TryGetValue(belt, out var bp) ? bp : 0f;
         if (Tubes.Air.TryGetValue(belt, out var air))
             foreach (var (puffs, rate) in air) puffs.Rate = rate * boosterPower;
         if (Tubes.Hiss.TryGetValue(belt, out var hiss) && hiss != null && !hiss.WasCollected) hiss.volume = 0.13f * boosterPower;
         var hasStart = StartDistance.TryGetValue(belt, out var start);
-        if (Tubes.RingStrips.TryGetValue(belt, out var strip) && strip.Renderer != null && !strip.Renderer.WasCollected && strip.Colors != null && !strip.Colors.WasCollected)
+        if (Tubes.RingStrips.TryGetValue(belt, out var strip) && strip.Mesh != null && !strip.Mesh.WasCollected)
         {
-            var colors = new Color[strip.At.Length];
-            for (var i = 0; i < colors.Length; i++) colors[i] = ColorFor(hasStart ? At(start + strip.At[i]) : 0f);
-            BeltLooks.SetGlowColors(strip.Renderer, strip.Colors, colors, Intensity);
+            var u = new float[strip.At.Length];
+            for (var i = 0; i < u.Length; i++) u[i] = RingU(hasStart ? At(start + strip.At[i]) : 0f);
+            SetU(strip.Mesh, u, strip.PerRing);
         }
         if (!Tubes.Rings.TryGetValue(belt, out var rings)) return;
         var isBooster = Belts.TypeOf(belt) == Tubes.Booster;
         foreach (var (ring, at) in rings)
         {
-            if (ring == null || ring.WasCollected) continue;
             float pressure;
             if (isBooster) pressure = BoosterPower.TryGetValue(belt, out var p) ? p : 0f;
             else pressure = hasStart ? At(start + at) : 0f;
-            BeltLooks.SetGlow(ring, ColorFor(pressure), Intensity);
+            SetRing(ring, pressure);
         }
     }
 
     /// <summary>Colours a tube splitter's or merger's ring by the pressure through it.</summary>
     public static void RecolorJunction(int structure)
     {
+        EnsurePalette();
         ShownJunction[structure] = JunctionKey(structure);
         if (!Tubes.JunctionRings.TryGetValue(structure, out var rings)) return;
         var pressure = JunctionPressure.TryGetValue(structure, out var p) ? p : 0f;
-        foreach (var ring in rings)
-            if (ring != null && !ring.WasCollected) BeltLooks.SetGlow(ring, ColorFor(pressure), Intensity);
+        foreach (var ring in rings) SetRing(ring, pressure);
     }
 
     private static void RecolorAll()
     {
+        EnsurePalette();
         foreach (var structure in Tubes.JunctionRings.Keys.ToList())
         {
             if (Junctions.TypeOf(structure) is null) { Tubes.JunctionRings.Remove(structure); ShownJunction.Remove(structure); continue; }

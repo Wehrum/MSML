@@ -396,9 +396,50 @@ public static class BeltLooks
     private static int _baseColorId, _emissionId, _baseMapId, _emissionMapId;
 
     /// <summary>
+    /// A glowing material coloured by a palette: a texture 1 pixel high (point-filtered), each vertex's u coordinate
+    /// picking its colour. Many renderers share it (so they're drawn together) while showing different colours:
+    /// recolour one by changing its mesh's u coordinates (<see cref="SetPaletteU"/>), not its material. Per-renderer
+    /// material changes (property blocks) keep renderers from being drawn together, which costs a lot with thousands.
+    /// </summary>
+    public static Material PaletteGlow(Texture2D palette, float intensity = 2f)
+    {
+        var m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "MSML palette glow" };
+        m.SetColor("_BaseColor", Color.white);
+        m.SetTexture("_BaseMap", palette);
+        m.EnableKeyword("_EMISSION");
+        m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        m.SetTexture("_EmissionMap", palette);
+        m.SetColor("_EmissionColor", Color.white * intensity);
+        m.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return m;
+    }
+
+    /// <summary>The u coordinate of a palette's pixel (see <see cref="PaletteGlow"/>).</summary>
+    public static float PaletteU(int pixel, int width) => (pixel + 0.5f) / width;
+
+    /// <summary>Gives every vertex of the mesh the same u (one palette colour; see <see cref="PaletteGlow"/>).</summary>
+    public static void SetPaletteU(Mesh mesh, float u)
+    {
+        var uv = new Il2CppStructArray<Vector2>(mesh.vertexCount);
+        var span = uv.AsSpan();
+        for (var i = 0; i < span.Length; i++) span[i] = new Vector2(u, 0.5f);
+        mesh.uv = uv;
+    }
+
+    /// <summary>Sets a mesh's u coordinates: vertices in consecutive runs of <paramref name="run"/>, run i getting u[i].</summary>
+    public static void SetPaletteU(Mesh mesh, IReadOnlyList<float> u, int run)
+    {
+        var uv = new Il2CppStructArray<Vector2>(mesh.vertexCount);
+        var span = uv.AsSpan();
+        for (var i = 0; i < span.Length; i++) span[i] = new Vector2(u[Math.Min(u.Count - 1, i / run)], 0.5f);
+        mesh.uv = uv;
+    }
+
+    /// <summary>
     /// Colours parts of one renderer using a <see cref="Glow"/> material, each its own colour: the mesh's u coordinate
     /// picks a pixel of <paramref name="strip"/> (a texture <paramref name="colors"/> wide and 1 high, point-filtered),
     /// which is set to the colours. E.g. many rings in one mesh, each showing its own colour, instead of a renderer each.
+    /// Prefer <see cref="PaletteGlow"/> for many renderers: this gives each renderer its own material settings.
     /// </summary>
     public static void SetGlowColors(Renderer renderer, Texture2D strip, Color[] colors, float intensity = 2f)
     {

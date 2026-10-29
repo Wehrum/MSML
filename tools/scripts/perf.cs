@@ -7,6 +7,7 @@
 //     base     teleport to the middle of the moon's belts first
 //     novsync  turn vsync off while measuring (frame times are then the real cost, not rounded up to the screen's
 //              refresh), put back after
+//     crew     also time the game's multiplayer, dust and cleaning work (crew sync, strokes, dust pages, truth checks)
 // Inclusive times: a method's time includes what it calls (e.g. MoonWorld.Update includes the belt hooks it runs).
 
 using MSML;
@@ -98,6 +99,19 @@ public static class Perf
             var t = game.GetTypes().FirstOrDefault(x => x.Name == parts[0]);
             foreach (var m in t?.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly).Where(x => x.Name == parts[1]) ?? Enumerable.Empty<MethodInfo>())
                 Hook(m, e, false);
+        }
+        // crew: the game's multiplayer, dust and cleaning work (MoonWorld's crew/dust/stroke/clean/truth/section/chunk
+        // methods, and the crew session's).
+        if (ctx.Args.Contains("crew"))
+        {
+            var pattern = new System.Text.RegularExpressions.Regex("Crew|Dust|Stroke|Clean|Truth|Section|Chunk|Pages?$|Visual|Paint|Splat");
+            foreach (var t in new[] { typeof(MoonWorld), typeof(MoonCrewSession) })
+                foreach (var m in t.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.DeclaredOnly))
+                {
+                    if (m.IsSpecialName || m.IsGenericMethodDefinition || m.Name.StartsWith("Method_") || m.Name.StartsWith("get_") || m.Name.StartsWith("set_")) continue;
+                    if (t == typeof(MoonWorld) && !pattern.IsMatch(m.Name)) continue;
+                    Hook(m, $"{t.Name}.{m.Name}", false);
+                }
         }
         foreach (var asm in AppDomain.CurrentDomain.GetAssemblies().Where(a => a.GetName().Name is { } n && (n.StartsWith("MSML") || n.StartsWith("MoonSweepMods.ModLoader") || n.StartsWith("MoonSweepMods.DebugMenu"))))
         {
@@ -211,7 +225,7 @@ public static class Perf
         ctx.Log($"\n=== {phase}: {Frames.Count} frames, avg {Frames.DefaultIfEmpty().Average():F1} ms ({1000f / Math.Max(0.01f, Frames.DefaultIfEmpty().Average()):F0} fps), median {P(0.5f):F1}, p95 {P(0.95f):F1}, p99 {P(0.99f):F1}, max {P(1f):F1}; spikes {Spikes.Count}; GC: .NET gen0 {gc0} gen2 {gc2}, game {ilgc}");
         var gameTop = All.Where(s => !s.Mod && s.Calls > 0).Sum(s => 0L);
         ctx.Log($"{"method",-58} {"ms/frame",8} {"worst",7} {"calls/f",8}");
-        foreach (var s in All.Where(s => s.Calls > 0).OrderByDescending(s => s.Total).Take(32))
+        foreach (var s in All.Where(s => s.Calls > 0).OrderByDescending(s => s.Total).Take(45))
             ctx.Log($"{(s.Mod ? "* " : "  ") + s.Name,-58} {Ms(s.Total) / n,8:F3} {Ms(s.Worst),7:F2} {(double)s.Calls / n,8:F1}");
         var modTotal = All.Where(s => s.Mod && s.Name.Contains(":") && IsTopLevelHook(s.Name)).Sum(s => Ms(s.Total)) / n;
         ctx.Log($"mod hooks (top-level, * above): {modTotal:F2} ms/frame");
